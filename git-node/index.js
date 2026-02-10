@@ -5,34 +5,30 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { exec } from "child_process";
 import util from "util";
 import fs from "fs";
+import path from "path";
 
 const execAsync = util.promisify(exec);
 
 const server = new Server(
-  { name: "git-node-manager", version: "2.3.0" },
+  { name: "git-node-manager", version: "3.1.0" },
   { capabilities: { tools: {} } }
 );
 
-/**
- * Esegue un comando git nella cartella del progetto
- * Gestisce maxBuffer per output grandi
- */
 async function runGit(command, projectPath) {
   if (!projectPath || !fs.existsSync(projectPath)) {
     throw new Error(`Path del progetto non valido: ${projectPath}`);
   }
-
   try {
     const { stdout, stderr } = await execAsync(`git ${command}`, {
       cwd: projectPath,
       windowsHide: true,
-      maxBuffer: 1024 * 1024 * 10 // 10MB buffer
+      maxBuffer: 1024 * 1024 * 10
     });
-
-    if (stderr && !stdout) {
+    // Ignoriamo stderr non bloccanti (es. switch branch info)
+    if (stderr && !stdout && !stderr.includes("Switched") && !stderr.includes("Rebase")) {
       console.error(`Git Potential Error: ${stderr}`);
     }
-    return stdout ? stdout.trim() : "";
+    return stdout ? stdout.trim() : stderr.trim();
   } catch (error) {
     throw new Error(`Git Error: ${error.message}`);
   }
@@ -41,9 +37,54 @@ async function runGit(command, projectPath) {
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
+      // --- TOOL DI LETTURA/ANALISI ---
       {
         name: "git_status",
-        description: "Mostra i file modificati, nuovi o cancellati nel workspace corrente.",
+        description: "Status del workspace.",
+        inputSchema: {
+          type: "object", properties: { project_path: { type: "string" } }, required: ["project_path"]
+        },
+      },
+      {
+        name: "git_diff_working",
+        description: "Diff del lavoro attuale (Unstaged). Utile per verificare le correzioni prima di fare Add.",
+        inputSchema: {
+          type: "object", properties: { project_path: { type: "string" }, cached: { type: "boolean" } }, required: ["project_path"]
+        },
+      },
+      {
+        name: "git_show_commit",
+        description: "Dettagli di un commit passato.",
+        inputSchema: {
+          type: "object", properties: { project_path: { type: "string" }, commit_hash: { type: "string" } }, required: ["project_path", "commit_hash"]
+        },
+      },
+      {
+        name: "git_history",
+        description: "Log dei commit filtrabile.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            max_count: { type: "number" },
+            file_path: { type: "string" },
+            search_text: { type: "string" }
+          },
+          required: ["project_path"]
+        },
+      },
+      {
+        name: "git_blame",
+        description: "Authorship riga per riga.",
+        inputSchema: {
+          type: "object", properties: { project_path: { type: "string" }, file_path: { type: "string" }, start_line: { type: "number" }, end_line: { type: "number" } }, required: ["project_path", "file_path"]
+        },
+      },
+
+      // --- TOOL GESTIONE CONFLITTI ---
+      {
+        name: "git_list_conflicts",
+        description: "Elenca i file in stato 'Unmerged' (conflitto).",
         inputSchema: {
           type: "object",
           properties: { project_path: { type: "string" } },
@@ -51,55 +92,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: "git_diff_working",
-        description: "Mostra le differenze NON ancora committate (il lavoro attuale).",
+        name: "git_read_file",
+        description: "Legge il contenuto RAW di un file (per vedere i marcatori <<<<<<<).",
         inputSchema: {
           type: "object",
           properties: {
             project_path: { type: "string" },
-            cached: { type: "boolean", description: "Se true, mostra le differenze in stage." }
+            file_path: { type: "string" }
           },
-          required: ["project_path"],
+          required: ["project_path", "file_path"],
         },
       },
       {
-        name: "git_show_commit",
-        description: "Mostra i dettagli e il DIFF completo di un commit PASSATO specifico.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            commit_hash: { type: "string", description: "Hash del commit da analizzare" }
-          },
-          required: ["project_path", "commit_hash"],
-        },
-      },
-      {
-        name: "git_history",
-        description: "Cerca nella cronologia dei commit. Filtra per file o cerca testo nel messaggio.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            max_count: { type: "number", description: "Numero max di risultati. Default: 20 (se nessun filtro), Illimitato (se filtrato)." },
-            file_path: { type: "string", description: "Opzionale: filtra per file specifico." },
-            search_text: { type: "string", description: "Opzionale: Cerca testo nel messaggio di commit (grep)." }
-          },
-          required: ["project_path"],
-        },
-      },
-      {
-        name: "git_blame",
-        description: "Mostra chi ha modificato cosa riga per riga.",
+        name: "git_resolve_file",
+        description: "Sovrascrive un file con il contenuto risolto. NON esegue git add (devi farlo dopo).",
         inputSchema: {
           type: "object",
           properties: {
             project_path: { type: "string" },
             file_path: { type: "string" },
-            start_line: { type: "number" },
-            end_line: { type: "number" }
+            resolved_content: { type: "string", description: "Il codice finale pulito." }
+          },
+          required: ["project_path", "file_path", "resolved_content"],
+        },
+      },
+      {
+        name: "git_add",
+        description: "Esegue 'git add' su un file. Da usare DOPO aver risolto il conflitto e verificato.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            file_path: { type: "string", description: "Il file da aggiungere allo stage." }
           },
           required: ["project_path", "file_path"],
+        },
+      },
+      {
+        name: "git_rebase_action",
+        description: "Esegue azioni di rebase/merge: continue, abort o skip.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            action: { type: "string", enum: ["continue", "abort", "skip"] }
+          },
+          required: ["project_path", "action"],
         },
       }
     ],
@@ -114,81 +152,81 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // 1. STATUS
     if (name === "git_status") {
       const output = await runGit("status -s", projectPath);
-      return { content: [{ type: "text", text: output || "Nessuna modifica pendente." }] };
+      return { content: [{ type: "text", text: output || "Clean." }] };
     }
-
-    // 2. DIFF WORKSPACE
+    // 2. DIFF
     if (name === "git_diff_working") {
       const flags = args.cached ? "--cached" : "";
       const output = await runGit(`diff ${flags}`, projectPath);
-      return { content: [{ type: "text", text: output || "Nessuna differenza trovata." }] };
+      return { content: [{ type: "text", text: output || "No diff." }] };
     }
-
-    // 3. SHOW COMMIT
+    // 3. SHOW
     if (name === "git_show_commit") {
       const output = await runGit(`show ${args.commit_hash}`, projectPath);
       return { content: [{ type: "text", text: output }] };
     }
-
-    // 4. HISTORY (Log + Search Smart)
+    // 4. HISTORY
     if (name === "git_history") {
-
-      // LOGICA LIMITI INTELLIGENTE:
-      // - Se l'utente specifica max_count -> Usa quello.
-      // - Se l'utente filtra (file o search) -> Nessun limite (mostra tutti i match).
-      // - Se l'utente NON filtra e NON specifica max -> Default 20 (per non intasare).
-
-      let limitFlag = "";
-      if (args.max_count) {
-        limitFlag = ` -n ${args.max_count}`;
-      } else if (!args.file_path && !args.search_text) {
-        limitFlag = " -n 20";
-      }
-      // Else: limitFlag resta vuoto (illimitato) perché ci sono filtri
-
+      let limitFlag = args.max_count ? ` -n ${args.max_count}` : (!args.file_path && !args.search_text ? " -n 20" : "");
       const target = args.file_path ? ` -- "${args.file_path}"` : "";
-
-      let searchParam = "";
-      if (args.search_text) {
-        const safeSearch = args.search_text.replace(/"/g, '\\"');
-        searchParam = ` --grep="${safeSearch}" -i`;
-      }
-
+      let searchParam = args.search_text ? ` --grep="${args.search_text.replace(/"/g, '\\"')}" -i` : "";
       const format = `--pretty=format:"%h|%an|%ad|%s" --date=short`;
-
-      // Comando finale es: git log -n 20 --grep="fix" ...
       const rawOutput = await runGit(`log${limitFlag}${searchParam} ${format}${target}`, projectPath);
-
-      const commits = rawOutput.split('\n').filter(line => line.trim() !== '').map(line => {
-        const parts = line.split('|');
-        return { hash: parts[0], author: parts[1], date: parts[2], message: parts.slice(3).join('|') };
+      const commits = rawOutput.split('\n').filter(l => l.trim()).map(l => {
+        const p = l.split('|'); return { hash: p[0], author: p[1], date: p[2], message: p.slice(3).join('|') };
       });
-
-      if (commits.length === 0) {
-        return { content: [{ type: "text", text: "Nessun commit trovato con questi criteri." }] };
-      }
-
       return { content: [{ type: "text", text: JSON.stringify(commits, null, 2) }] };
     }
-
     // 5. BLAME
     if (name === "git_blame") {
-      let rangeParam = "";
-      if (args.start_line) {
-        const end = args.end_line || args.start_line + 20;
-        rangeParam = `-L ${args.start_line},${end}`;
-      }
-      const output = await runGit(`blame ${rangeParam} -e -n -w -- "${args.file_path}"`, projectPath);
+      let r = args.start_line ? `-L ${args.start_line},${args.end_line || args.start_line + 20}` : "";
+      const output = await runGit(`blame ${r} -e -n -w -- "${args.file_path}"`, projectPath);
       return { content: [{ type: "text", text: output }] };
     }
 
-    throw new Error(`Tool sconosciuto: ${name}`);
+    // --- NUOVI TOOL CONFLITTI (SEPARATI) ---
 
+    // 6. LIST CONFLICTS
+    if (name === "git_list_conflicts") {
+      const output = await runGit("diff --name-only --diff-filter=U", projectPath);
+      if (!output) return { content: [{ type: "text", text: "Nessun conflitto rilevato (Working tree clean from Unmerged)." }] };
+      return { content: [{ type: "text", text: "File in conflitto:\n" + output }] };
+    }
+
+    // 7. READ FILE
+    if (name === "git_read_file") {
+      const fullPath = path.join(projectPath, args.file_path);
+      if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
+      const content = fs.readFileSync(fullPath, 'utf8');
+      return { content: [{ type: "text", text: content }] };
+    }
+
+    // 8. RESOLVE (WRITE ONLY)
+    if (name === "git_resolve_file") {
+      const fullPath = path.join(projectPath, args.file_path);
+      fs.writeFileSync(fullPath, args.resolved_content, 'utf8');
+      return { content: [{ type: "text", text: `✅ File salvato: ${args.file_path}\nOra verifica con git_diff_working e poi usa git_add.` }] };
+    }
+
+    // 9. ADD (STAGE)
+    if (name === "git_add") {
+      await runGit(`add "${args.file_path}"`, projectPath);
+      return { content: [{ type: "text", text: `✅ File aggiunto allo stage: ${args.file_path}` }] };
+    }
+
+    // 10. CONTINUE/ABORT
+    if (name === "git_rebase_action") {
+      let cmd = `rebase --${args.action}`;
+      if (fs.existsSync(path.join(projectPath, ".git", "MERGE_HEAD")) && args.action === "continue") {
+        cmd = "commit --no-edit";
+      }
+      const output = await runGit(cmd, projectPath);
+      return { content: [{ type: "text", text: output || `Azione ${args.action} completata.` }] };
+    }
+
+    throw new Error(`Tool sconosciuto: ${name}`);
   } catch (error) {
-    return {
-      content: [{ type: "text", text: `❌ Git Error: ${error.message}` }],
-      isError: true
-    };
+    return { content: [{ type: "text", text: `❌ Errore: ${error.message}` }], isError: true };
   }
 });
 
