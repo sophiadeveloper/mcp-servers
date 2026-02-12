@@ -2,22 +2,34 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import sql from "mssql";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 
+const SUPPORTED_DRIVERS = ["mssql", "mysql", "postgres", "oracle"];
+
 const server = new Server(
-  { name: "sql-node-analyzer", version: "2.0.0" },
+  { name: "sql-mcp-server", version: "2.0.0" },
   { capabilities: { tools: {} } }
 );
 
-function getDbConfig(projectPath) {
-  let config = {
-    server: "", database: "", user: "", password: "",
-    options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true }
-  };
+/**
+ * Carica dinamicamente il driver corretto in base al DB_TYPE.
+ */
+async function getDriver(dbType) {
+  const type = (dbType || "").toLowerCase();
+  if (!SUPPORTED_DRIVERS.includes(type)) {
+    throw new Error(`DB_TYPE '${dbType}' non supportato. Usa uno tra: ${SUPPORTED_DRIVERS.join(", ")}`);
+  }
+  const driverModule = await import(`./drivers/${type}.js`);
+  return driverModule;
+}
 
+/**
+ * Legge la configurazione DB dal file .env del progetto.
+ * Restituisce { dbType, config } dove config è già formattato dal driver.
+ */
+function readEnvConfig(projectPath) {
   if (!projectPath) throw new Error("Percorso progetto mancante.");
 
   const envPath = path.join(projectPath, '.env');
@@ -26,18 +38,15 @@ function getDbConfig(projectPath) {
   }
 
   const envConfig = dotenv.parse(fs.readFileSync(envPath));
-  config.server = envConfig.DB_SERVER;
-  config.database = envConfig.DB_NAME;
-  config.user = envConfig.DB_USER;
-  config.password = envConfig.DB_PASSWORD;
 
-  if (envConfig.DB_INSTANCE) config.server = `${config.server}\\${envConfig.DB_INSTANCE}`;
-  if (envConfig.DB_PORT) config.port = parseInt(envConfig.DB_PORT);
-
-  if (!config.server || !config.user || !config.database) {
-    throw new Error("Credenziali incomplete nel file .env.");
+  if (!envConfig.DB_TYPE) {
+    throw new Error("DB_TYPE non specificato nel file .env. Usa uno tra: " + SUPPORTED_DRIVERS.join(", "));
   }
-  return config;
+  if (!envConfig.DB_SERVER || !envConfig.DB_USER || !envConfig.DB_NAME) {
+    throw new Error("Credenziali incomplete nel file .env (servono almeno DB_SERVER, DB_USER, DB_NAME).");
+  }
+
+  return envConfig;
 }
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -85,91 +94,48 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  let pool;
+  let conn;
+  let driver;
 
   try {
-    const dbConfig = getDbConfig(args.project_path);
-    pool = await new sql.ConnectionPool(dbConfig).connect();
+    const envConfig = readEnvConfig(args.project_path);
+    driver = await getDriver(envConfig.DB_TYPE);
+    const dbConfig = driver.buildConfig(envConfig);
+    conn = await driver.connect(dbConfig);
 
     // BLOCCO SICUREZZA COMUNE
-    if (/INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC|MERGE/i.test(args.query)) {
+    if (args.query && /INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC|MERGE/i.test(args.query)) {
       return { content: [{ type: "text", text: "🚫 BLOCKED: Solo SELECT consentite per sicurezza." }], isError: true };
     }
 
     if (name === "query_database") {
-      const result = await pool.request().query(args.query);
-      return { content: [{ type: "text", text: JSON.stringify(result.recordset, null, 2) }] };
+      const result = await driver.query(conn, args.query);
+      return { content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }] };
     }
 
     if (name === "explain_query") {
-      // Ricerca il piano nella cache di SQL Server usando le DMV
-
-      // Crea una firma della query per la ricerca
-      // Per query complesse, usiamo 100 caratteri + prendiamo i nomi delle tabelle principali
-      const normalizedQuery = args.query.replace(/\s+/g, ' ').trim();
-      const querySignature = normalizedQuery
-        .substring(0, 100)
-        .replace(/'/g, "''")
-        .replace(/%/g, '[%]');
-
-      // Estrai nomi di tabelle dalla query per una ricerca più precisa
-      const tableMatches = args.query.match(/FROM\s+(\w+)|JOIN\s+(\w+)/gi) || [];
-      const tables = tableMatches.slice(0, 2).join(' ').replace(/FROM|JOIN/gi, '').trim();
-
-      // Query di ricerca: usa firma + nomi tabelle per query complesse
-      const tableCondition = tables ? `AND st.text LIKE N'%${tables.split(' ')[0]}%'` : '';
-
-      const planQuery = `
-        SELECT TOP 1
-          CAST(qp.query_plan AS NVARCHAR(MAX)) AS plan_xml,
-          qs.execution_count,
-          qs.total_elapsed_time / 1000 AS total_ms,
-          qs.total_logical_reads AS logical_reads,
-          SUBSTRING(st.text, 1, 300) AS query_preview
-        FROM sys.dm_exec_query_stats qs
-        CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
-        CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
-        WHERE (st.text LIKE N'%${querySignature.substring(0, 60)}%' ${tableCondition})
-          AND st.text NOT LIKE '%dm_exec_query%'
-          AND qp.query_plan IS NOT NULL
-        ORDER BY qs.last_execution_time DESC
-      `;
-
-      const result = await pool.request().query(planQuery);
-      const rows = result.recordset || [];
-
-      if (rows.length === 0 || !rows[0].plan_xml) {
+      const planText = await driver.explain(conn, args.query);
+      if (!planText) {
         return {
           content: [{
             type: "text",
-            text: `⚠️ Piano non trovato nella cache.\n\n` +
+            text: `⚠️ Piano non trovato.\n\n` +
               `Per ottenere il piano, esegui prima la query con query_database, poi riprova.\n\n` +
               `Nota: I piani vengono rimossi dalla cache dopo un certo periodo o sotto pressione di memoria.`
           }]
         };
       }
-
-      const row = rows[0];
-      return {
-        content: [{
-          type: "text",
-          text: `🔍 EXECUTION PLAN\n\n` +
-            `📊 Stats: ${row.execution_count} exec, ${row.total_ms}ms, ${row.logical_reads} reads\n` +
-            `📝 Query: ${row.query_preview}...\n\n` +
-            row.plan_xml
-        }]
-      };
+      return { content: [{ type: "text", text: planText }] };
     }
 
     if (name === "get_table_schema") {
-      const q = `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @t`;
-      const result = await pool.request().input('t', sql.VarChar, args.tableName).query(q);
-      return { content: [{ type: "text", text: JSON.stringify(result.recordset, null, 2) }] };
+      const result = await driver.getTableSchema(conn, args.tableName);
+      return { content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }] };
     }
   } catch (err) {
     return { content: [{ type: "text", text: `Errore SQL: ${err.message}` }], isError: true };
   } finally {
-    if (pool) await pool.close();
+    if (conn && driver) await driver.close(conn);
   }
   throw new Error("Tool not found");
 });
