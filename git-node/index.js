@@ -81,6 +81,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
 
+
+      // --- TOOL DI LETTURA/ANALISI ---
+      {
+        name: "git_diff_compare",
+        description: "Compara due branch (o commit) usando 'git diff target...source' (triple dot). Ideale per Code Review di feature branch rispetto a dev/main.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            source: { type: "string", description: "Il branch/commit con le novità (es. feature-branch). Default: HEAD" },
+            target: { type: "string", description: "Il branch/commit base (es. develops/main)." },
+            name_only: { type: "boolean", description: "Se true, elenca solo i nomi dei file cambiati." },
+            file_path: { type: "string", description: "Opzionale: limita il diff a un file specifico." }
+          },
+          required: ["project_path", "target"]
+        },
+      },
+
       // --- TOOL GESTIONE CONFLITTI ---
       {
         name: "git_list_conflicts",
@@ -182,6 +200,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let r = args.start_line ? `-L ${args.start_line},${args.end_line || args.start_line + 20}` : "";
       const output = await runGit(`blame ${r} -e -n -w -- "${args.file_path}"`, projectPath);
       return { content: [{ type: "text", text: output }] };
+    }
+
+
+    // 5b. DIFF COMPARE (SMART REVIEW)
+    if (name === "git_diff_compare") {
+      const source = args.source || "HEAD";
+      const target = args.target;
+      const nameOnly = args.name_only ? "--name-only" : "";
+      const fileFilter = args.file_path ? ` -- "${args.file_path}"` : "";
+
+      // Usa triple dot (...) per vedere i cambiamenti dal common ancestor
+      // E' lo standard per le Code Review (es. GitHub PR)
+      const output = await runGit(`diff ${nameOnly} ${target}...${source}${fileFilter}`, projectPath);
+
+      return {
+        content: [{
+          type: "text",
+          text: output || `Nessuna differenza trovata tra ${target} e ${source}.`
+        }]
+      };
     }
 
     // --- NUOVI TOOL CONFLITTI (SEPARATI) ---
