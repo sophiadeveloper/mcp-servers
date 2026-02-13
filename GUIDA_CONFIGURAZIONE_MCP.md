@@ -108,6 +108,29 @@ Simile agli altri, punta all'index.js del progetto Mantis.
 }
 ```
 
+### E. Linter MCP Server (`linter-node`)
+
+**Nota Importante**: A differenza degli altri server, questo utilizza `tsx` per eseguire direttamente i file TypeScript (`src/index.ts`) e richiede la configurazione di variabili d'ambiente specifiche per ColdFusion.
+
+```json
+"linter-node": {
+  "command": "node",
+  "args": [
+    "D:\\mcp-servers\\linter-node\\node_modules\\tsx\\dist\\cli.mjs",
+    "D:\\mcp-servers\\linter-node\\src\\index.ts"
+  ],
+  "env": {
+    "CFLINT_JAR": "C:\\tesisquare\\cflint\\CFLint-1.5.0-all.jar",
+    "JAVA_BIN": "D:\\programmi\\ColdFusion2023\\jre\\bin\\java.exe"
+  }
+}
+```
+
+*   **Command**: Usa `node` generico.
+*   **Args[0]**: Punta al loader `tsx` installato nei `node_modules` del progetto (in formato Windows con doppi backslash `\\`).
+*   **Args[1]**: Punta al file sorgente `src/index.ts`.
+*   **Env**: Definisce i percorsi per il JAR di CFLint e per l'eseguibile Java (JRE di ColdFusion).
+
 ---
 
 ## 3. Preparazione del Server (Prerequisiti)
