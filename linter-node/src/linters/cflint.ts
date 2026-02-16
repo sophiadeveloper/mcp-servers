@@ -7,6 +7,21 @@ import { config } from '../config.js';
 
 const execAsync = promisify(exec);
 
+function findConfigFile(startPath: string): string | null {
+  let currentDir = startPath;
+  const { root } = path.parse(currentDir);
+
+  while (true) {
+    const configPath = path.join(currentDir, '.cflintrc');
+    if (fs.existsSync(configPath)) {
+      return configPath;
+    }
+    if (currentDir === root) break;
+    currentDir = path.dirname(currentDir);
+  }
+  return null;
+}
+
 interface CFLintIssue {
   severity: string;
   id: string;
@@ -40,10 +55,27 @@ export async function lintCFML(filePath: string): Promise<LintResult> {
     throw new Error(`File not found: ${absolutePath}`);
   }
 
-  const cmd = `"${config.cflint.javaPath}" -jar "${config.cflint.jarPath}" -file "${absolutePath}" -stdout -json`;
+  const javaPath = config.cflint.javaPath;
+  const cflintJarPath = config.cflint.jarPath;
+
+  if (!fs.existsSync(javaPath)) {
+    throw new Error(`Java executable not found at: ${javaPath}`);
+  }
+  if (!fs.existsSync(cflintJarPath)) {
+    throw new Error(`CFLint JAR not found at: ${cflintJarPath}`);
+  }
+
+  const projectDir = path.dirname(absolutePath);
+  const configPath = findConfigFile(projectDir);
+
+  let command = `"${javaPath}" -jar "${cflintJarPath}" -file "${absolutePath}" -q -json`;
+
+  if (configPath) {
+    command += ` -configfile "${configPath}"`;
+  }
 
   try {
-    const { stdout, stderr } = await execAsync(cmd);
+    const { stdout, stderr } = await execAsync(command);
 
     // CFLint might output other text before JSON if there are errors or debug info
     // We need to find the JSON part. It usually starts with { and ends with }
