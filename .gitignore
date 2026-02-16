@@ -1,0 +1,16 @@
+# Node.js dependencies
+**/node_modules/
+
+# Logs and temp files
+**/*.log
+**/.DS_Store
+**/npm-debug.log*
+
+# IDE / Editor configuration
+**/.idea/
+**/.vscode/
+**/*.swp
+
+# Build artifacts (if any typescript compilation happens)
+**/dist/
+**/build/

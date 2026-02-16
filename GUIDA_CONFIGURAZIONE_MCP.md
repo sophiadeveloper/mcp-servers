@@ -166,6 +166,15 @@ sudo apt install nodejs npm -y
 node -v
 ```
 
+**D. Installa Dipendenze in ogni Server:**
+Questa è la fase più importante per evitare problemi di binari (come `esbuild`). Per ogni cartella di server (`linter-node`, `git-node`, ecc.), devi eseguire l'installazione delle dipendenze:
+1.  Apri il terminale.
+2.  Entra nella cartella (es. `cd linter-node`).
+3.  Esegui `npm install`.
+    *   Questo comando scarica i pacchetti e compila i binari per il *tuo* sistema operativo specifico.
+
+---
+
 **B. Scarica i Server MCP:**
 Scarica il repository ufficiale direttamente sul filesystem del server remoto.
 ```bash
@@ -236,3 +245,5 @@ Ecco come appare la configurazione per un ambiente Ubuntu.
     *   Su Linux: Verifica che il comando sia nel PATH o usa il percorso assoluto (es. `/usr/bin/git`).
 *   **Modifiche non rilevate**:
     *   Dopo aver modificato il file JSON di configurazione, riavvia Antigravity o usa il comando "Reload Window".
+*   **Errore `esbuild` su nuovo ambiente**:
+    *   Se il server `linter-node` non parte e ricevi errori legati a `esbuild` o binari mancanti, prova a eseguire `npm rebuild esbuild` nella cartella `d:\mcp-servers\linter-node`. Questo ricompila le dipendenze native per il tuo sistema corrente.
