@@ -56,9 +56,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         name: "git_show_commit",
         description: "Dettagli di un commit passato.",
         inputSchema: {
-          type: "object", properties: { project_path: { type: "string" }, commit_hash: { type: "string" } }, required: ["project_path", "commit_hash"]
+          type: "object", properties: { project_path: { type: "string" }, commit_hash: { type: "string" }, file_path: { type: "string", description: "Opzionale: limita il diff a un file specifico." } }, required: ["project_path", "commit_hash"]
         },
       },
+
+
       {
         name: "git_history",
         description: "Log dei commit filtrabile.",
@@ -68,7 +70,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             project_path: { type: "string" },
             max_count: { type: "number" },
             file_path: { type: "string" },
-            search_text: { type: "string" }
+            search_text: { type: "string" },
+            commit_range: { type: "string", description: "Range di commit opzionale (es. 'origin/main..HEAD')." }
           },
           required: ["project_path"]
         },
@@ -108,6 +111,43 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: { project_path: { type: "string" } },
           required: ["project_path"],
         },
+      },
+      {
+        name: "git_check_ancestor",
+        description: "Verifica se un commit è antenato di un altro (restituisce true/false). Utile per filtrare commit vecchi.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            ancestor_commit: { type: "string" },
+            descendant_commit: { type: "string" }
+          },
+          required: ["project_path", "ancestor_commit", "descendant_commit"]
+        }
+      },
+      {
+        name: "git_get_commit_info",
+        description: "Restituisce info strutturate (hash, message, author, date) su un commit/ref.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            commit_ref: { type: "string", description: "Hash o ref (es. HEAD, REBASE_HEAD). Default: HEAD" }
+          },
+          required: ["project_path"]
+        }
+      },
+      {
+        name: "git_analyze_conflict",
+        description: "Analizza un file in conflitto e restituisce i blocchi (HEAD, Incoming, Base) in formato JSON strutturato. Utile per evitare problemi di parsing dei marcatori.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            file_path: { type: "string" }
+          },
+          required: ["project_path", "file_path"]
+        }
       },
       {
         name: "git_read_file",
@@ -180,16 +220,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     // 3. SHOW
     if (name === "git_show_commit") {
-      const output = await runGit(`show ${args.commit_hash}`, projectPath);
+      const fileFilter = args.file_path ? ` -- "${args.file_path}"` : "";
+      const output = await runGit(`show ${args.commit_hash}${fileFilter}`, projectPath);
       return { content: [{ type: "text", text: output }] };
     }
     // 4. HISTORY
     if (name === "git_history") {
-      let limitFlag = args.max_count ? ` -n ${args.max_count}` : (!args.file_path && !args.search_text ? " -n 20" : "");
+      let limitFlag = args.max_count ? ` -n ${args.max_count}` : (!args.commit_range && !args.file_path && !args.search_text ? " -n 20" : "");
+
       const target = args.file_path ? ` -- "${args.file_path}"` : "";
+
       let searchParam = args.search_text ? ` --grep="${args.search_text.replace(/"/g, '\\"')}" -i` : "";
+
+      const revRange = args.commit_range ? ` ${args.commit_range}` : "";
+
       const format = `--pretty=format:"%h|%an|%ad|%s" --date=short`;
-      const rawOutput = await runGit(`log${limitFlag}${searchParam} ${format}${target}`, projectPath);
+
+      // Ordine: log FLAGS REV_RANGE FORMAT -- PATH
+      const rawOutput = await runGit(`log${limitFlag}${searchParam} ${format}${revRange}${target}`, projectPath);
+
       const commits = rawOutput.split('\n').filter(l => l.trim()).map(l => {
         const p = l.split('|'); return { hash: p[0], author: p[1], date: p[2], message: p.slice(3).join('|') };
       });
@@ -237,6 +286,117 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
       const content = fs.readFileSync(fullPath, 'utf8');
       return { content: [{ type: "text", text: content }] };
+    }
+
+    // 11. ANALYZE CONFLICT
+    if (name === "git_analyze_conflict") {
+      const fullPath = path.join(projectPath, args.file_path);
+      if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
+
+      // Leggi come buffer per gestire meglio eventuali caratteri strani all'inizio (BOM)
+      const buffer = fs.readFileSync(fullPath);
+      let content = buffer.toString('utf8');
+
+      // Rimuovi BOM se presente
+      if (content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1);
+      }
+
+      const lines = content.split(/\r?\n/);
+      const conflicts = [];
+      let currentConflict = null;
+      let insideBlock = null; // 'head', 'base', 'incoming'
+
+      lines.forEach((line, index) => {
+        const lineNum = index + 1;
+
+        if (line.startsWith('<<<<<<<')) {
+          if (currentConflict) {
+            // Errore: nested conflict o precedente non chiuso?
+            conflicts.push({ ...currentConflict, error: "Unclosed block before new start" });
+          }
+          currentConflict = {
+            start_line: lineNum,
+            head_header: line,
+            head_content: [],
+            base_content: [],
+            incoming_content: [],
+            incoming_header: null,
+            end_line: null
+          };
+          insideBlock = 'head';
+        } else if (line.startsWith('|||||||')) {
+          if (currentConflict) {
+            insideBlock = 'base';
+          }
+        } else if (line.startsWith('=======')) {
+          if (currentConflict) {
+            insideBlock = 'incoming';
+          }
+        } else if (line.startsWith('>>>>>>>')) {
+          if (currentConflict) {
+            currentConflict.end_line = lineNum;
+            currentConflict.incoming_header = line;
+
+            // Unisci le righe
+            currentConflict.head_content = currentConflict.head_content.join('\n');
+            currentConflict.base_content = currentConflict.base_content.join('\n');
+            currentConflict.incoming_content = currentConflict.incoming_content.join('\n');
+
+            conflicts.push(currentConflict);
+            currentConflict = null;
+            insideBlock = null;
+          }
+        } else {
+          if (currentConflict && insideBlock) {
+            if (insideBlock === 'head') currentConflict.head_content.push(line);
+            else if (insideBlock === 'base') currentConflict.base_content.push(line);
+            else if (insideBlock === 'incoming') currentConflict.incoming_content.push(line);
+          }
+        }
+      });
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            file_path: args.file_path,
+            conflict_count: conflicts.length,
+            conflicts: conflicts
+          }, null, 2)
+        }]
+      };
+    }
+
+    // 12. CHECK ANCESTOR
+    if (name === "git_check_ancestor") {
+      try {
+        await execAsync(`git merge-base --is-ancestor ${args.ancestor_commit} ${args.descendant_commit}`, { cwd: projectPath });
+        return { content: [{ type: "text", text: "true" }] };
+      } catch (error) {
+        if (error.code === 1) return { content: [{ type: "text", text: "false" }] };
+        throw new Error(`Git Error: ${error.message}`);
+      }
+    }
+
+    // 13. GET COMMIT INFO
+    if (name === "git_get_commit_info") {
+      const ref = args.commit_ref || "HEAD";
+      const output = await runGit(`log -1 --format="%H^|^%h^|^%an^|^%ad^|^%s" --date=short ${ref}`, projectPath);
+      const parts = output.split('^|^');
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            hash: parts[0],
+            short_hash: parts[1],
+            author: parts[2],
+            date: parts[3],
+            message: parts.slice(4).join('^|^')
+          }, null, 2)
+        }]
+      };
     }
 
     // 8. RESOLVE (WRITE ONLY)
