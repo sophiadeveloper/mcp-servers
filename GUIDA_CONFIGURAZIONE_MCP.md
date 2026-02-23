@@ -131,6 +131,20 @@ Simile agli altri, punta all'index.js del progetto Mantis.
 *   **Args[1]**: Punta al file sorgente `src/index.ts`.
 *   **Env**: Definisce i percorsi per il JAR di CFLint e per l'eseguibile Java (JRE di ColdFusion).
 
+### F. Playwright MCP Server (`playwright-node`)
+
+Questo server implementa web-browsing e agentic automation.
+Se hai intenzione di navigare su domini limitati (diverso da localhost), crea un file `.env` dentro la sua cartella mappando `ALLOWED_URLS=tuodomino.it,esempio.com`. Lasciando vuoto (o senza `.env`) navigherà nativamente solo su `localhost` e `127.0.0.1`. Se vuoi permettere qualsiasi navigazione, usa `ALLOWED_URLS=*`.
+
+```json
+"playwright-mcp-server": {
+  "command": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "D:\\mcp-servers\\playwright-node\\index.js"
+  ]
+}
+```
+
 ---
 
 ## 3. Preparazione del Server (Prerequisiti)
