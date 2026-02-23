@@ -70,7 +70,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             project_path: { type: "string" },
             max_count: { type: "number" },
             file_path: { type: "string" },
-            search_text: { type: "string" },
+            search_text: { type: "string", description: "Ricerca nel messaggio di commit (--grep)." },
+            search_code: { type: "string", description: "Ricerca all'interno dei file modificati (usa git log -G o -S)." },
             commit_range: { type: "string", description: "Range di commit opzionale (es. 'origin/main..HEAD')." }
           },
           required: ["project_path"]
@@ -156,7 +157,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           type: "object",
           properties: {
             project_path: { type: "string" },
-            file_path: { type: "string" }
+            file_path: { type: "string" },
+            commit_hash: { type: "string", description: "Opzionale. Hash del commit da cui leggere (es. HEAD^). Se omesso, legge il working tree locale." }
           },
           required: ["project_path", "file_path"],
         },
@@ -197,6 +199,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["project_path", "action"],
         },
+      },
+      {
+        name: "git_restore_file",
+        description: "Ripristina un file o più file allo stato di un commit specifico usando git checkout/restore.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            file_path: { type: "string" },
+            commit_hash: { type: "string", description: "Hash del commit (es. HEAD^, origin/main, o un hash)." }
+          },
+          required: ["project_path", "file_path", "commit_hash"],
+        },
       }
     ],
   };
@@ -231,6 +246,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const target = args.file_path ? ` -- "${args.file_path}"` : "";
 
       let searchParam = args.search_text ? ` --grep="${args.search_text.replace(/"/g, '\\"')}" -i` : "";
+      if (args.search_code) {
+        searchParam += ` -G"${args.search_code.replace(/"/g, '\\"')}"`;
+      }
 
       const revRange = args.commit_range ? ` ${args.commit_range}` : "";
 
@@ -282,10 +300,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // 7. READ FILE
     if (name === "git_read_file") {
-      const fullPath = path.join(projectPath, args.file_path);
-      if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
-      const content = fs.readFileSync(fullPath, 'utf8');
-      return { content: [{ type: "text", text: content }] };
+      if (args.commit_hash) {
+        // Formatta il PATH in stile Unix dato che git show si aspetta '/'
+        const filePathPosix = args.file_path.replace(/\\/g, '/');
+        const output = await runGit(`show ${args.commit_hash}:"${filePathPosix}"`, projectPath);
+        return { content: [{ type: "text", text: output }] };
+      } else {
+        const fullPath = path.join(projectPath, args.file_path);
+        if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
+        const content = fs.readFileSync(fullPath, 'utf8');
+        return { content: [{ type: "text", text: content }] };
+      }
     }
 
     // 11. ANALYZE CONFLICT
@@ -420,6 +445,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const output = await runGit(cmd, projectPath);
       return { content: [{ type: "text", text: output || `Azione ${args.action} completata.` }] };
+    }
+
+    // 14. RESTORE FILE
+    if (name === "git_restore_file") {
+      await runGit(`checkout ${args.commit_hash} -- "${args.file_path}"`, projectPath);
+      return { content: [{ type: "text", text: `✅ File ripristinato dal commit ${args.commit_hash}: ${args.file_path}` }] };
     }
 
     throw new Error(`Tool sconosciuto: ${name}`);

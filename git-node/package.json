@@ -12,5 +12,6 @@
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3"
-  }
+  },
+  "devDependencies": {}
 }
