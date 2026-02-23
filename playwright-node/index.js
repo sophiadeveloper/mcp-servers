@@ -29,6 +29,24 @@ let context = null;
 let page = null;
 let pages = []; // Multi-tab tracking
 
+// --- Idle Hibernation Timer ---
+let idleTimer = null;
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+function resetIdleTimer() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(async () => {
+    console.error(`[HIBERNATION] Browser idle for ${IDLE_TIMEOUT_MS / 1000}s. Closing to free RAM/CPU.`);
+    if (browser) {
+      try { await browser.close(); } catch (e) { /* ignore */ }
+    }
+    browser = null;
+    context = null;
+    page = null;
+    pages = [];
+  }, IDLE_TIMEOUT_MS);
+}
+
 // --- Ring Buffers for Monitoring ---
 const MAX_LOGS = 50;
 let networkErrors = [];
@@ -96,7 +114,11 @@ async function ensureBrowser(storageStatePath = undefined) {
       args: [
         '--disable-blink-features=AutomationControlled',
         '--disable-notifications',
-        '--disable-geolocation'
+        '--disable-geolocation',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-software-rasterizer',
+        '--no-sandbox'
       ]
     };
 
@@ -116,6 +138,19 @@ async function ensureBrowser(storageStatePath = undefined) {
 
     const contextOptions = storageStatePath ? { storageState: storageStatePath } : {};
     context = await browser.newContext(contextOptions);
+
+    // Optional media blocking for Bandwidth/RAM saving
+    if (process.env.BLOCK_MEDIA === 'true') {
+      await context.route('**/*', route => {
+        const type = route.request().resourceType();
+        if (['image', 'media', 'font'].includes(type)) {
+          route.abort();
+        } else {
+          route.continue();
+        }
+      });
+      console.error("Media blocking is ENABLED via .env");
+    }
 
     // Listen for new pages to handle _blank links safely (Max 3 tabs)
     context.on('page', async newPage => {
@@ -330,6 +365,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // Reset the hibernation timer on any interaction
+  resetIdleTimer();
+
   // We will ensure the browser runs before any tool is executed (except maybe safe ones, but it's simpler this way)
   await ensureBrowser();
 

@@ -134,14 +134,21 @@ Simile agli altri, punta all'index.js del progetto Mantis.
 ### F. Playwright MCP Server (`playwright-node`)
 
 Questo server implementa web-browsing e agentic automation.
-Se hai intenzione di navigare su domini limitati (diverso da localhost), crea un file `.env` dentro la sua cartella mappando `ALLOWED_URLS=tuodomino.it,esempio.com`. Lasciando vuoto (o senza `.env`) navigherà nativamente solo su `localhost` e `127.0.0.1`. Se vuoi permettere qualsiasi navigazione, usa `ALLOWED_URLS=*`.
+Le configurazioni di sicurezza e di ottimizzazione vengono fornite direttamente nel blocco `env` del file di configurazione (`mcp_config.json`), e non necessitano di un file `.env` sparso nella cartella del progetto.
+
+*   `ALLOWED_URLS`: Specifica i domini consentiti separati da virgola in modo da assicurare una navigazione limitata (es. `tuodomino.it,esempio.com`). Non specificandolo o usandolo senza blocchi navigherà nativamente solo su `localhost` e `127.0.0.1`. Se vuoi permettere qualsiasi navigazione senza restrizioni, usa `*`.
+*   `BLOCK_MEDIA`: Se impostato a `"true"`, indica al server di intercettare e bloccare tutto il traffico relativo a immagini, video e font, facendoti risparmiare preziosa banda, memoria e cicli CPU (ottimo nei casi in cui all'agente interessa solo testo/DOM e non l'estetica).
 
 ```json
 "playwright-mcp-server": {
   "command": "C:\\Program Files\\nodejs\\node.exe",
   "args": [
     "D:\\mcp-servers\\playwright-node\\index.js"
-  ]
+  ],
+  "env": {
+    "ALLOWED_URLS": "localhost,127.0.0.1",
+    "BLOCK_MEDIA": "false"
+  }
 }
 ```
 
