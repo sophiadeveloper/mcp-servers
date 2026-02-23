@@ -351,14 +351,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["index"],
         },
-      },
-      {
-        name: "browser_read_downloaded_file",
-        description: "Reads the content of the last file downloaded by the browser, converting it to text.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
       }
     ]
   };
