@@ -166,8 +166,10 @@ Prima che l'editor possa avviare il server, devi assicurarti che il server stess
     *   Solo se dovessi riscontrare errori di "modulo non trovato", apri un terminale nella cartella del server ed esegui `npm install`.
 3.  **Configurazione `.env`**:
     *   Molti server richiedono un file `.env` per funzionare (per password, token API, ecc.).
-    *   Crea un file `.env` nella cartella del server (puoi copiare `.env.example` se presente).
-    *   Compila le variabili richieste.
+    *   Crea un file `.env` nella cartella root del tuo workspace o affidati al blocco `env` del file `mcp_config.json`.
+4.  **Installazione Browser (Solo per `playwright-node`)**:
+    *   Prima dei primissimo avvio, Playwright ha bisogno di scaricare i binari dei browser headless sul tuo sistema.
+    *   Apri un terminale dentro la cartella `playwright-node` ed esegui `npx playwright install chromium`.
 
 ## 4. Configurazione VSCode Remote (Ubuntu/Linux)
 

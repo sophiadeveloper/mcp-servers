@@ -5,11 +5,9 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { chromium } from "playwright";
-import dotenv from "dotenv";
 
 // Redirect console.log to console.error to prevent libraries from breaking the JSON-RPC stdout stream
 console.log = console.error;
-dotenv.config();
 
 const server = new Server(
   {
@@ -524,12 +522,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // Wait a tiny bit for rendering
         await new Promise(resolve => setTimeout(resolve, 100));
-        const buffer = await page.screenshot({ encoding: "base64", fullPage: true });
+        const buffer = await page.screenshot({ fullPage: true });
 
         return {
           content: [{
             type: "image",
-            data: buffer,
+            data: buffer.toString("base64"),
             mimeType: "image/png"
           }, {
             type: "text",
