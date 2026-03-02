@@ -14,3 +14,6 @@
 # Build artifacts (if any typescript compilation happens)
 **/dist/
 **/build/
+
+# Local databases
+**/docs-node/docs.db*

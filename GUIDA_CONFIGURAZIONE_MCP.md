@@ -152,6 +152,28 @@ Le configurazioni di sicurezza e di ottimizzazione vengono fornite direttamente 
 }
 ```
 
+### G. Documentation MCP Server (`docs-node`)
+
+Questo server indicizza file Markdown (`.md`) e cartelle in un database locale SQLite (senza necessità di database esterni) fornendo capacità di **Full-Text Search (FTS5)**. Permette all'AI di consultare istantaneamente documentazione complessa e raggrupparla in "scaffali".
+
+```json
+"docs-mcp-server": {
+  "command": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "D:\\mcp-servers\\docs-node\\index.js"
+  ]
+}
+```
+
+**Esempi d'uso per l'Agente AI:**
+*   `docs_scan_folder`: Scansiona un'intera directory per file `.md`.
+    *   *Esempio*: `folder_path: "D:\\docs\\pte-docs", shelf: "Tesisquare PTE"`
+    *   *Esempio*: `folder_path: "D:\\docs\\coding-standards", shelf: "Tesisquare Coding Standards"`
+    *   *Nota sull'aggiornamento*: Se i file su disco vengono modificati, basta ri-eseguire lo stesso tool `docs_scan_folder` (o `docs_scan_file`). Il sistema è idempotente: aggiornerà automaticamente il contenuto e l'indice FTS5 per i file già esistenti nello scaffale, senza creare duplicati. I file originali non sono più necessari al server dopo la scansione.
+*   `docs_search`: Esegue una query semantica sul database tramite BM25 (es. `query: "come fare il deploy", shelf: "Tesisquare PTE"`). Restituisce gli snippet e un `id` documento.
+*   `docs_read_document`: Consente all'AI di estrarre l'intero contenuto testuale markdown di un documento noto il suo ID (proveniente dai risultati di docs_search).
+*   `docs_create_shelf` e `docs_update_shelf`: Permettono di associare una `description` parlante allo scaffale in modo che in futuro, tramite list_shelves, si sappia in anticipo quale contesto stiamo interrogando.
+
 ---
 
 ## 3. Preparazione del Server (Prerequisiti)
