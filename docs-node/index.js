@@ -224,11 +224,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "docs_read_document",
-        description: "Recupera il contenuto markdown completo di un documento dal database usando l'ID restituito da docs_search o docs_list_documents.",
+        description: "Recupera il contenuto markdown di un documento usando l'ID restituito da docs_search. Predefinito: intero documento. Usa start_line/end_line o search_string per estrarre sotto-porzioni.",
         inputSchema: {
           type: "object",
           properties: {
-            document_id: { type: "number", description: "L'ID univoco del documento." }
+            document_id: { type: "number", description: "L'ID univoco del documento." },
+            start_line: { type: "number", description: "Riga di inizio opzionale (1-based)." },
+            end_line: { type: "number", description: "Riga di fine opzionale (1-based)." },
+            search_string: { type: "string", description: "Stringa da cercare nel documento (ignora maiuscole). Se fornito, estrae i blocchi corrispondenti con contesto." },
+            context_lines: { type: "number", description: "Numero di righe di contesto prima e dopo (default 10)." }
           },
           required: ["document_id"]
         }
@@ -460,10 +464,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if (!doc) throw new Error(`Documento non trovato con ID: ${args.document_id}`);
 
+      let outContent = doc.content;
+      
+      const lines = outContent.split(/\r?\n/);
+      
+      if (args.search_string) {
+        const queryTerm = args.search_string.toLowerCase();
+        const contextLines = args.context_lines !== undefined ? Math.max(0, args.context_lines) : 10;
+        let matchedBlocks = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].toLowerCase().includes(queryTerm)) {
+            const start = Math.max(0, i - contextLines);
+            const end = Math.min(lines.length, i + contextLines + 1);
+            let block = lines.slice(start, end).map((l, idx) => `${start + idx + 1}: ${l}`).join('\n');
+            matchedBlocks.push(`--- Match at line ${i + 1} ---\n` + block);
+          }
+        }
+        
+        if (matchedBlocks.length > 0) {
+           outContent = matchedBlocks.join('\n\n');
+        } else {
+           outContent = `Nessuna corrispondenza trovata per: "${args.search_string}"`;
+        }
+      } else if (args.start_line !== undefined || args.end_line !== undefined) {
+        const start = args.start_line ? Math.max(1, args.start_line) - 1 : 0;
+        const end = args.end_line ? Math.min(lines.length, args.end_line) : lines.length;
+        outContent = lines.slice(start, end).map((l, idx) => `${start + idx + 1}: ${l}`).join('\n');
+      }
+
       return {
         content: [{
           type: "text",
-          text: `Titolo: ${doc.title}\nScaffale: ${doc.shelf_name}\nPercorso Originale: ${doc.file_path}\n\n${doc.content}`
+          text: `Titolo: ${doc.title}\nScaffale: ${doc.shelf_name}\nPercorso Originale: ${doc.file_path}\n\n${outContent}`
         }]
       };
     }
