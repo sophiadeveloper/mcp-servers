@@ -1,4 +1,5 @@
 import { LintResult, LintMessage } from './types.js';
+import { hasUtf8Bom, ensureEncoding } from './utils.js';
 import path from 'path';
 import fs from 'fs';
 import pkg from 'node-sql-parser';
@@ -51,6 +52,26 @@ export async function lintSQL(filePath: string, fix: boolean = false): Promise<L
 
   const content = fs.readFileSync(absolutePath, 'utf8');
   const messages: LintMessage[] = [];
+
+  // --- CHECK FOR UTF-8 BOM (FORBIDDEN FOR SQL) --- 
+  let encodingModified = false;
+  if (hasUtf8Bom(absolutePath)) {
+    if (fix) {
+      encodingModified = ensureEncoding(absolutePath, false);
+    }
+    
+    if (!encodingModified) {
+      messages.push({
+        line: 1,
+        column: 1,
+        severity: 'error',
+        message: 'SQL file must be encoded in UTF-8 without BOM.',
+        ruleId: 'FILE_ENCODING_ERROR'
+      });
+    }
+  }
+  // ----------------------------
+
   const config = loadConfig(absolutePath);
   let ast: any;
 
@@ -94,8 +115,8 @@ export async function lintSQL(filePath: string, fix: boolean = false): Promise<L
   return {
     filePath: absolutePath,
     messages: messages,
-    fixable: false,
-    output: undefined
+    fixable: (hasUtf8Bom(absolutePath) && !encodingModified),
+    output: encodingModified ? fs.readFileSync(absolutePath, 'utf8') : undefined
   };
 }
 

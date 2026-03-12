@@ -1,5 +1,6 @@
 import { ESLint } from 'eslint';
 import { LintResult, LintMessage } from './types.js';
+import { hasUtf8Bom, ensureEncoding } from './utils.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -72,6 +73,26 @@ export async function lintJS(filePath: string, fix: boolean = false): Promise<Li
 
   // 4. Transform results
   const messages: LintMessage[] = [];
+
+  // --- CHECK FOR UTF-8 BOM (FORBIDDEN FOR JS/TS) --- 
+  let encodingModified = false;
+  if (hasUtf8Bom(absolutePath)) {
+    if (fix) {
+      encodingModified = ensureEncoding(absolutePath, false);
+    }
+    
+    if (!encodingModified) {
+      messages.push({
+        line: 1,
+        column: 1,
+        severity: 'error',
+        message: 'JS/TS file must be encoded in UTF-8 without BOM.',
+        ruleId: 'FILE_ENCODING_ERROR'
+      });
+    }
+  }
+  // ----------------------------
+
   let output: string | undefined;
 
   for (const result of results) {
@@ -96,7 +117,7 @@ export async function lintJS(filePath: string, fix: boolean = false): Promise<Li
   return {
     filePath: absolutePath,
     messages: messages,
-    fixable: results.some(r => r.fixableErrorCount > 0 || r.fixableWarningCount > 0),
-    output: output
+    fixable: (results.some(r => r.fixableErrorCount > 0 || r.fixableWarningCount > 0)) || (hasUtf8Bom(absolutePath) && !encodingModified),
+    output: encodingModified ? (output || fs.readFileSync(absolutePath, 'utf8')) : output
   };
 }

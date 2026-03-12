@@ -23,7 +23,7 @@ const LINT_CODE_TOOL: Tool = {
       },
       fix: {
         type: "boolean",
-        description: "Attempt to fix the errors (if supported)",
+        description: "Attempt to fix errors automatically. This includes fixing file encoding (e.g., adding UTF-8 BOM to CFML files or removing it from JS/SQL files) and other supportable lint fixes.",
       },
     },
     required: ["file_path"],
@@ -80,7 +80,7 @@ async function main() {
 
       try {
         if (ext === '.cfc' || ext === '.cfm') {
-          const result = await lintCFML(filePath);
+          const result = await lintCFML(filePath, fix);
           return {
             content: [
               {

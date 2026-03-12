@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { LintResult, LintMessage } from './types.js';
 import { config } from '../config.js';
+import { hasUtf8Bom, ensureEncoding } from './utils.js';
 
 const execAsync = promisify(exec);
 
@@ -48,7 +49,7 @@ interface CFLintOutput {
   counts: any;
 }
 
-export async function lintCFML(filePath: string): Promise<LintResult> {
+export async function lintCFML(filePath: string, fix: boolean = false): Promise<LintResult> {
   const absolutePath = path.resolve(filePath);
 
   if (!fs.existsSync(absolutePath)) {
@@ -92,6 +93,28 @@ export async function lintCFML(filePath: string): Promise<LintResult> {
 
     const messages: LintMessage[] = [];
 
+    // --- CHECK FOR UTF-8 BOM (MANDATORY FOR CFML) ---
+    let encodingModified = false;
+    if (!hasUtf8Bom(absolutePath)) {
+      if (fix) {
+        encodingModified = ensureEncoding(absolutePath, true);
+      }
+      
+      // If we fixed it, the error is gone from the current view (or about to be)
+      // but usually linter tools return the status BEFORE the fix or the final state.
+      // We will report it only if it's still missing or we want the user to know it was fixed.
+      if (!encodingModified) {
+        messages.push({
+          line: 1,
+          column: 1,
+          severity: 'error',
+          message: 'CFML file must be encoded in UTF-8 with BOM.',
+          ruleId: 'FILE_ENCODING_ERROR'
+        });
+      }
+    }
+    // ----------------------------
+
     if (result.issues) {
       for (const issue of result.issues) {
         for (const loc of issue.locations) {
@@ -108,7 +131,9 @@ export async function lintCFML(filePath: string): Promise<LintResult> {
 
     return {
       filePath: absolutePath,
-      messages: messages
+      messages: messages,
+      fixable: !hasUtf8Bom(absolutePath) && !encodingModified,
+      output: encodingModified ? fs.readFileSync(absolutePath, 'utf8') : undefined
     };
 
   } catch (error: any) {
