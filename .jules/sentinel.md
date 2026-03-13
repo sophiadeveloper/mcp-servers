@@ -4,4 +4,10 @@
 
 **Learning:** Blocklists for SQL safety are inherently fragile — every new SQL keyword or DB-specific feature is a potential bypass. The intended policy was SELECT-only, but the blocklist implementation didn't match that policy. This mismatch between intent and implementation is a common source of security gaps.
 
-**Prevention:** Always use an allowlist (whitelist) to enforce read-only SQL access: `!/^\s*SELECT\b/i.test(query)`. This matches the stated policy exactly and is resilient to new/exotic SQL keywords.
+**Prevention:** Use an `isQueryReadOnly()` helper that:
+1. **Strips all SQL comments** (`/* ... */` and `-- ...`) before keyword inspection — without this, a leading comment fools a simple prefix check. Note: nested block comments (PostgreSQL `/* /* ... */ */`) are not fully stripped, but in that edge case the first-keyword check still blocks the query safely.
+2. **Allowlist first keyword** — only `SELECT` and `WITH` (for CTEs) are permitted; everything else is blocked.
+3. **Blocks `INTO`** — catches `SELECT ... INTO OUTFILE/DUMPFILE` (MySQL filesystem write) and `SELECT INTO table` (PostgreSQL/MSSQL DDL). This is intentionally conservative: queries with `INTO` inside string literals are also blocked as a security-first tradeoff.
+4. **Blocks non-terminal semicolons** — prevents multi-statement batch attacks like `SELECT 1; DROP TABLE users`.
+
+Note: regex-level checks are a defence-in-depth measure. For maximum safety, the DB connection user should also be restricted to SELECT privileges at the database level.
