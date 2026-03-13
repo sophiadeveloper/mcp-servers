@@ -184,64 +184,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     conn = await driver.connect(dbConfig);
 
-    // Funzione di validazione per garantire che la query sia effettivamente di sola lettura.
-    function isSafeReadOnlyQuery(query) {
-      let normalizedQuery = String(query);
-
-      // Blocca esplicitamente i "versioned comments" MySQL del tipo /*! ... */,
-      // che in MySQL possono contenere codice eseguibile e non vanno trattati come semplici commenti.
-      if (normalizedQuery.includes("/*!")) {
-        return false;
-      }
-
-      // Rimuovi commenti multi-linea /* ... */ e commenti singola linea (-- e //).
-      normalizedQuery = normalizedQuery
-        .replace(/\/\*[\s\S]*?\*\//g, " ")  // commenti multi-linea /* ... */
-        .replace(/--.*$/gm, " ")            // commenti singola linea --
-        .replace(/\/\/.*$/gm, " ");         // commenti stile // ...
-
-      // Rimuovi le string literal per evitare bypass tramite testo tra virgolette.
-      const stringLiteralPatterns = [
-        /'(?:''|[^'])*'/g,                 // stringhe singolo apice, con escaping SQL ''
-        /"(?:[^"\\]|\\.)*"/g,              // stringhe doppio apice con escape tipo C
-        /`(?:[^`\\]|\\.)*`/g               // identificatori/stringhe backtick (MySQL, ecc.)
-      ];
-      for (const re of stringLiteralPatterns) {
-        normalizedQuery = normalizedQuery.replace(re, " ");
-      }
-
-      // Normalizza spazi bianchi.
-      normalizedQuery = normalizedQuery.trim();
-
-      // Allowlist: la query deve iniziare con SELECT o WITH.
-      if (!/^(\s*)(with|select)\b/i.test(normalizedQuery)) {
-        return false;
-      }
-
-      // Blocca multi-statement: nessun punto e virgola deve rimanere dopo la normalizzazione.
-      if (normalizedQuery.includes(";")) {
-        return false;
-      }
-
-      // Blocca parole chiave DML/DDL e chiamate a procedure/funzioni potenzialmente pericolose.
-      const forbiddenKeywords = /\b(insert|update|delete|merge|into|drop|alter|create|truncate|exec(?:ute)?|call|grant|revoke)\b/i;
-      // Variante che permette spazi (inclusi quelli derivanti da commenti rimossi) tra le lettere,
-      // per evitare bypass tipo "DE/**/LETE" -> "DE LETE".
-      const forbiddenKeywordsFragmented = /\b(i\s*n\s*s\s*e\s*r\s*t|u\s*p\s*d\s*a\s*t\s*e|d\s*e\s*l\s*e\s*t\s*e|m\s*e\s*r\s*g\s*e|i\s*n\s*t\s*o|d\s*r\s*o\s*p|a\s*l\s*t\s*e\s*r|c\s*r\s*e\s*a\s*t\s*e|t\s*r\s*u\s*n\s*c\s*a\s*t\s*e|e\s*x\s*e\s*c(?:\s*u\s*t\s*e)?|c\s*a\s*l\s*l|g\s*r\s*a\s*n\s*t|r\s*e\s*v\s*o\s*k?e)\b/i;
-      if (forbiddenKeywords.test(normalizedQuery) || forbiddenKeywordsFragmented.test(normalizedQuery)) {
-        return false;
-      }
-
-      return true;
-    }
-
-    // BLOCCO SICUREZZA COMUNE
+    // COMMON SECURITY BLOCK
     if (args.query) {
-      if (!isSafeReadOnlyQuery(args.query)) {
-        return {
-          content: [{ type: "text", text: "🚫 BLOCKED: Operazione non consentita per sicurezza. Solo SELECT permesse." }],
-          isError: true
-        };
+      // 1. Remove string literals to avoid false positives (e.g. LIKE '%insert%')
+      let cleanQuery = args.query.replace(/'([^'\\]|\\.)*'/g, ' ');
+
+      // 2. Remove comments to avoid bypasses
+      cleanQuery = cleanQuery
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/--.*$/gm, ' ')
+        .trim();
+
+      const dangerousKeywords = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC|MERGE|CREATE|REPLACE|RENAME|GRANT|REVOKE|CALL)\b/i;
+      if (dangerousKeywords.test(cleanQuery)) {
+        return { content: [{ type: "text", text: "🚫 BLOCKED: Operation not permitted for security reasons. Only SELECT queries are allowed." }], isError: true };
       }
     }
 
