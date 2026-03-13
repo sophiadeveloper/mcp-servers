@@ -9,43 +9,60 @@ resolve_path_or_prompt() {
     local prompt_text="$3"
     local resolved_path="$auto_path"
 
-    # Cicla finché il percorso è vuoto o non esiste
-    while [[ -z "$resolved_path" || ! -e "$resolved_path" ]]; do
+    # Se il percorso automatico esiste ed è valido, lo usiamo subito
+    if [[ -n "$resolved_path" && -e "$resolved_path" ]]; then
+        >&2 echo -e "\033[36mTrovato ${path_name}: $resolved_path\033[0m"
+        echo "$resolved_path"
+        return
+    fi
+
+    # Cicla finché il percorso inserito è valido o viene premuto INVIO per saltare
+    while true; do
         >&2 echo -e "\033[33mATTENZIONE: Impossibile trovare in automatico: $path_name\033[0m"
-        >&2 read -p "> $prompt_text: " input_path
+        >&2 read -p "> $prompt_text (Premi INVIO per saltare): " input_path
+
+        if [[ -z "$input_path" ]]; then
+            >&2 echo -e "\033[90mPercorso ${path_name} saltato.\033[0m"
+            echo ""
+            return
+        fi
 
         # Gestione tilde (~) nei percorsi inseriti a mano
         input_path="${input_path/#\~/$HOME}"
 
         if [[ -e "$input_path" ]]; then
             resolved_path="$input_path"
+            >&2 echo -e "\033[36mTrovato ${path_name}: $resolved_path\033[0m"
+            echo "$resolved_path"
+            return
         else
-            >&2 echo -e "\033[31mErrore: Percorso non valido o inesistente. Riprova.\033[0m"
-            resolved_path=""
+            >&2 echo -e "\033[31mErrore: Percorso non valido o inesistente. Riprova o premi INVIO per saltare.\033[0m"
         fi
     done
-
-    >&2 echo -e "\033[36mTrovato ${path_name}: $resolved_path\033[0m"
-    echo "$resolved_path"
 }
 
 echo -e "--- Ricerca dei percorsi di base ---"
 NODE_AUTO=$(which node 2>/dev/null)
-export NODE_PATH=$(resolve_path_or_prompt "Node.js" "$NODE_AUTO" "Inserisci il percorso assoluto di node (es. /usr/bin/node o ~/.nvm/.../bin/node)")
+NODE_PATH_RAW=$(resolve_path_or_prompt "Node.js" "$NODE_AUTO" "Inserisci il percorso assoluto di node (es. /usr/bin/node)")
+export NODE_PATH=${NODE_PATH_RAW:-"<NODE_BIN_PATH_MISSING>"}
 
 ROOT_AUTO=$(pwd)
-export ROOT_DIR=$(resolve_path_or_prompt "Directory Server MCP" "$ROOT_AUTO" "Inserisci il percorso della cartella contenente i server")
+ROOT_DIR_RAW=$(resolve_path_or_prompt "Directory Server MCP" "$ROOT_AUTO" "Inserisci il percorso della cartella contenente i server")
+export ROOT_DIR=${ROOT_DIR_RAW:-$(pwd)}
 
 echo -e "\n--- Ricerca delle dipendenze per i server specifici ---"
 GIT_EXE=$(which git 2>/dev/null)
 GIT_AUTO=$([[ -n "$GIT_EXE" ]] && dirname "$GIT_EXE" || echo "/usr/bin")
-export GIT_CMD_PATH=$(resolve_path_or_prompt "Git Directory" "$GIT_AUTO" "Inserisci il percorso della cartella bin di Git")
+GIT_CMD_PATH_RAW=$(resolve_path_or_prompt "Git Directory" "$GIT_AUTO" "Inserisci il percorso della cartella bin di Git")
+export GIT_CMD_PATH=${GIT_CMD_PATH_RAW:-"<GIT_BIN_PATH_MISSING>"}
 
 # Percorso fittizio tipico per installazioni Linux (modificalo se hai un path standard)
-export CFLINT_PATH=$(resolve_path_or_prompt "CFLint JAR" "/opt/cflint/CFLint-1.5.0-all.jar" "Inserisci il file .jar di CFLint")
+CFLINT_PATH_RAW=$(resolve_path_or_prompt "CFLint JAR" "/opt/cflint/CFLint-1.5.0-all.jar" "Inserisci il file .jar di CFLint")
+export CFLINT_PATH=${CFLINT_PATH_RAW:-"<CFLINT_JAR_PATH_MISSING>"}
 
 JAVA_AUTO=$(which java 2>/dev/null)
-export JAVA_PATH=$(resolve_path_or_prompt "Java BIN" "$JAVA_AUTO" "Inserisci il file eseguibile di java (es. /opt/ColdFusion2023/jre/bin/java)")
+JAVA_PATH_RAW=$(resolve_path_or_prompt "Java BIN" "$JAVA_AUTO" "Inserisci il file eseguibile di java (es. /opt/ColdFusion2023/jre/bin/java)")
+export JAVA_PATH=${JAVA_PATH_RAW:-"<JAVA_BIN_PATH_MISSING>"}
 
 echo -e "\nGenerazione del file di configurazione locale..."
 echo "-------------------------------------------"
@@ -121,5 +138,25 @@ servers.forEach(server => {
 // Scrittura in UTF-8
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
 console.log('-------------------------------------------');
-console.log('\x1b[32mFile generato con successo in: ' + settingsPath + '\x1b[0m');
+console.log('\x1b[32mFile JSON generato con successo in: ' + settingsPath + '\x1b[0m');
+
+// Generazione file settings.toml per GPT Codex
+const tomlLines = [];
+for (const [name, config] of Object.entries(settings.mcpServers)) {
+    tomlLines.push(`[mcp_servers."${name}"]`);
+    tomlLines.push(`command = "${config.command.replace(/\\/g, '\\\\')}"`);
+    const argsStr = config.args.map(a => `"${String(a).replace(/\\/g, '\\\\')}"`).join(', ');
+    tomlLines.push(`args = [${argsStr}]`);
+    
+    if (config.env) {
+        const envEntries = Object.entries(config.env)
+            .map(([k, v]) => `"${k}" = "${String(v).replace(/\\/g, '\\\\')}"`)
+            .join(', ');
+        tomlLines.push(`env = { ${envEntries} }`);
+    }
+    tomlLines.push('');
+}
+const settingsTomlPath = path.join(rootDir, 'settings.toml');
+fs.writeFileSync(settingsTomlPath, tomlLines.join('\n'), 'utf8');
+console.log('\x1b[32mFile TOML generato con successo in: ' + settingsTomlPath + '\x1b[0m');
 "

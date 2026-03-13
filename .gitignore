@@ -18,3 +18,4 @@
 # Local databases
 **/docs-node/docs.db*
 settings.json
+settings.toml

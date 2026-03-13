@@ -10,26 +10,37 @@ function Resolve-PathOrPrompt {
     
     $resolvedPath = $AutoPath
     
-    # Cicla finchÈ il percorso Ë vuoto o non esiste
-    while ([string]::IsNullOrWhiteSpace($resolvedPath) -or -not (Test-Path $resolvedPath)) {
+    # Se il percorso automatico esiste ed √® valido, lo usiamo subito
+    if (-not [string]::IsNullOrWhiteSpace($resolvedPath) -and (Test-Path $resolvedPath)) {
+        Write-Host "Trovato ${PathName}: $resolvedPath" -ForegroundColor Cyan
+        return $resolvedPath
+    }
+
+    # Altrimenti cicla finch√© l'utente inserisce un percorso valido o preme INVIO per saltare
+    while ($true) {
         Write-Warning "Impossibile trovare in automatico: $PathName"
-        $inputPath = Read-Host "> $PromptText"
+        $inputPath = Read-Host "> $PromptText (Lascia VUOTO per ignorare)"
         
+        if ([string]::IsNullOrWhiteSpace($inputPath)) {
+            Write-Host "Percorso ${PathName} ignorato." -ForegroundColor Gray
+            return ""
+        }
+
         if (Test-Path $inputPath) {
-            $resolvedPath = $inputPath
+            Write-Host "Trovato ${PathName}: $inputPath" -ForegroundColor Cyan
+            return $inputPath
         } else {
-            Write-Warning "Percorso non valido o inesistente. Riprova."
-            $resolvedPath = "" # Resetta per forzare il ciclo
+            Write-Warning "Percorso non valido o inesistente. Riprova o premi INVIO per saltare."
         }
     }
-    
-    Write-Host "Trovato ${PathName}: $resolvedPath" -ForegroundColor Cyan
-    return $resolvedPath
 }
 
 Write-Host "--- Ricerca dei percorsi di base ---"
 $nodePath = Resolve-PathOrPrompt -PathName "Node.js" -AutoPath (Get-Command node -ErrorAction SilentlyContinue).Source -PromptText "Inserisci il percorso assoluto di node.exe (es. C:\Program Files\nodejs\node.exe)"
+if ([string]::IsNullOrWhiteSpace($nodePath)) { $nodePath = "<NODE_EXE_PATH_MISSING>" }
+
 $rootDir = Resolve-PathOrPrompt -PathName "Directory Server MCP" -AutoPath (Get-Location).Path -PromptText "Inserisci il percorso della cartella che contiene i tuoi server (es. D:\mcp-servers)"
+if ([string]::IsNullOrWhiteSpace($rootDir)) { $rootDir = (Get-Location).Path } # Root dir di fallback alla corrente se saltata
 
 Write-Host "`n--- Ricerca delle dipendenze per i server specifici ---"
 
@@ -37,14 +48,17 @@ Write-Host "`n--- Ricerca delle dipendenze per i server specifici ---"
 $gitExe = Get-Command git -ErrorAction SilentlyContinue
 $gitAuto = if ($gitExe) { Split-Path $gitExe.Source } else { "C:\Program Files\Git\cmd" }
 $gitCmdPath = Resolve-PathOrPrompt -PathName "Git CMD" -AutoPath $gitAuto -PromptText "Inserisci il percorso della cartella 'cmd' di Git"
+if ([string]::IsNullOrWhiteSpace($gitCmdPath)) { $gitCmdPath = "<GIT_CMD_PATH_MISSING>" }
 
 # 2. Ricerca CFLint (Percorso custom, manteniamo il default statico)
 $cfLintPath = Resolve-PathOrPrompt -PathName "CFLint JAR" -AutoPath "C:\tesisquare\cflint\CFLint-1.5.0-all.jar" -PromptText "Inserisci il file .jar di CFLint"
+if ([string]::IsNullOrWhiteSpace($cfLintPath)) { $cfLintPath = "<CFLINT_JAR_PATH_MISSING>" }
 
 # 3. Ricerca Dinamica Java
 $javaExe = Get-Command java -ErrorAction SilentlyContinue
 $javaAuto = if ($javaExe) { $javaExe.Source } else { "D:\programmi\ColdFusion2023\jre\bin\java.exe" }
 $javaPath = Resolve-PathOrPrompt -PathName "Java BIN" -AutoPath $javaAuto -PromptText "Inserisci il file java.exe"
+if ([string]::IsNullOrWhiteSpace($javaPath)) { $javaPath = "<JAVA_EXE_PATH_MISSING>" }
 
 # Imposta il salvataggio nella cartella locale
 $settingsPath = Join-Path $rootDir "settings.json"
@@ -52,7 +66,7 @@ $settingsPath = Join-Path $rootDir "settings.json"
 Write-Host "`nGenerazione del file di configurazione locale: $settingsPath"
 Write-Host "-------------------------------------------"
 
-# Inizializza o carica il file locale se esiste gi‡
+# Inizializza o carica il file locale se esiste gi√†
 $settings = $null
 if (Test-Path $settingsPath) {
     $rawContent = Get-Content $settingsPath -Raw
@@ -60,7 +74,7 @@ if (Test-Path $settingsPath) {
         try {
             $settings = ConvertFrom-Json -InputObject $rawContent
         } catch {
-            Write-Warning "Il file locale settings.json non contiene un JSON valido. Verr‡ ricreato."
+            Write-Warning "Il file locale settings.json non contiene un JSON valido. Verr√† ricreato."
         }
     }
 }
@@ -132,4 +146,37 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($settingsPath, $jsonOutput, $utf8NoBom)
 
 Write-Host "-------------------------------------------"
-Write-Host "File generato con successo in: $settingsPath" -ForegroundColor Green
+Write-Host "File JSON generato con successo in: $settingsPath" -ForegroundColor Green
+
+# Generazione file settings.toml per GPT Codex
+$tomlLines = @()
+foreach ($serverProperties in $settings.mcpServers.PSObject.Properties) {
+    $serverName = $serverProperties.Name
+    $config = $serverProperties.Value
+    
+    $tomlLines += "[mcp_servers.`"$serverName`"]"
+    $cmdEscaped = $config.command.Replace('\', '\\')
+    $tomlLines += "command = `"$cmdEscaped`""
+    
+    $argsEscaped = @()
+    foreach ($a in $config.args) {
+        $argsEscaped += "`"$($a.ToString().Replace('\', '\\'))`""
+    }
+    $tomlLines += "args = [$($argsEscaped -join ', ')]"
+    
+    if (Get-Member -InputObject $config -Name "env" -ErrorAction SilentlyContinue) {
+        $envEntries = @()
+        foreach ($e in $config.env.PSObject.Properties) {
+            $envEntries += "`"$($e.Name)`" = `"$($e.Value.ToString().Replace('\', '\\'))`""
+        }
+        if ($envEntries.Count -gt 0) {
+            $tomlLines += "env = { $($envEntries -join ', ') }"
+        }
+    }
+    $tomlLines += ""
+}
+
+$settingsTomlPath = Join-Path $rootDir "settings.toml"
+$tomlOutput = $tomlLines -join "`n"
+[System.IO.File]::WriteAllText($settingsTomlPath, $tomlOutput, $utf8NoBom)
+Write-Host "File TOML generato con successo in: $settingsTomlPath" -ForegroundColor Green
