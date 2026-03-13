@@ -1,4 +1,4 @@
 ## 2025-05-15 - Robust SQL Validation
 **Vulnerability:** Weak regex-based SQL validation for query restrictions (e.g., blocking non-SELECT queries).
 **Learning:** Simple regex checks for keywords like `INSERT`, `DELETE` can be easily bypassed using SQL comments (e.g., `DE/**/LETE`) or multi-statement queries. Additionally, they often produce false positives by matching keywords inside string literals (e.g., `WHERE col LIKE '%insert%'`).
-**Prevention:** Always sanitize the query by removing string literals and SQL comments before performing keyword-based validation. Use word boundaries (`\b`) in regex to match exact keywords and maintain a comprehensive list of dangerous operations.
+**Prevention:** In our current implementation, sanitize the query by stripping SQL comments, then enforce that it starts with `SELECT` and apply keyword-based validation using word-boundary (`\b`) regexes over a curated list of dangerous operations. Be aware that this approach does not yet remove string literals nor robustly handle multi-statement queries, so it should be complemented with parameterized queries and database-level permissions.
