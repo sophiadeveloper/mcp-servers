@@ -69,6 +69,28 @@ export async function lintCFML(filePath: string, fix: boolean = false): Promise<
   const projectDir = path.dirname(absolutePath);
   const configPath = findConfigFile(projectDir);
 
+  const messages: LintMessage[] = [];
+  let encodingModified = false;
+
+  // --- CHECK FOR UTF-8 BOM (MANDATORY FOR CFML) ---
+  if (!hasUtf8Bom(absolutePath)) {
+    if (fix) {
+      encodingModified = ensureEncoding(absolutePath, true);
+    }
+    
+    // If we didn't fix it (either fix=false or fixing failed), report it
+    if (!encodingModified) {
+      messages.push({
+        line: 1,
+        column: 1,
+        severity: 'error',
+        message: 'CFML file must be encoded in UTF-8 with BOM.',
+        ruleId: 'FILE_ENCODING_ERROR'
+      });
+    }
+  }
+  // ----------------------------
+
   let command = `"${javaPath}" -jar "${cflintJarPath}" -file "${absolutePath}" -q -json`;
 
   if (configPath) {
@@ -83,63 +105,45 @@ export async function lintCFML(filePath: string, fix: boolean = false): Promise<
     const jsonStart = stdout.indexOf('{');
     const jsonEnd = stdout.lastIndexOf('}');
 
-    if (jsonStart === -1 || jsonEnd === -1) {
-      console.warn("CFLint output is not valid JSON:", stdout);
-      return { filePath: absolutePath, messages: [] };
-    }
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      const jsonString = stdout.substring(jsonStart, jsonEnd + 1);
+      const result: CFLintOutput = JSON.parse(jsonString);
 
-    const jsonString = stdout.substring(jsonStart, jsonEnd + 1);
-    const result: CFLintOutput = JSON.parse(jsonString);
-
-    const messages: LintMessage[] = [];
-
-    // --- CHECK FOR UTF-8 BOM (MANDATORY FOR CFML) ---
-    let encodingModified = false;
-    if (!hasUtf8Bom(absolutePath)) {
-      if (fix) {
-        encodingModified = ensureEncoding(absolutePath, true);
-      }
-      
-      // If we fixed it, the error is gone from the current view (or about to be)
-      // but usually linter tools return the status BEFORE the fix or the final state.
-      // We will report it only if it's still missing or we want the user to know it was fixed.
-      if (!encodingModified) {
-        messages.push({
-          line: 1,
-          column: 1,
-          severity: 'error',
-          message: 'CFML file must be encoded in UTF-8 with BOM.',
-          ruleId: 'FILE_ENCODING_ERROR'
-        });
-      }
-    }
-    // ----------------------------
-
-    if (result.issues) {
-      for (const issue of result.issues) {
-        for (const loc of issue.locations) {
-          messages.push({
-            line: loc.line,
-            column: loc.column,
-            severity: mapSeverity(issue.severity),
-            message: issue.message || loc.message,
-            ruleId: issue.id
-          });
+      if (result.issues) {
+        for (const issue of result.issues) {
+          for (const loc of issue.locations) {
+            messages.push({
+              line: loc.line,
+              column: loc.column,
+              severity: mapSeverity(issue.severity),
+              message: issue.message || loc.message,
+              ruleId: issue.id
+            });
+          }
         }
       }
+    } else {
+      console.warn("CFLint output is not valid JSON:", stdout);
     }
 
     return {
       filePath: absolutePath,
       messages: messages,
       fixable: !hasUtf8Bom(absolutePath) && !encodingModified,
-      output: encodingModified ? fs.readFileSync(absolutePath, 'utf8') : undefined
+      output: encodingModified ? ("\ufeff" + fs.readFileSync(absolutePath, 'utf8')) : undefined
     };
 
   } catch (error: any) {
     console.error("Error executing CFLint:", error);
-    // If exec fails (e.g. exit code 1), it might still have valid output if CFLint considers lint errors as failure
-    // creating a fallback or re-throwing depending on stderr
+    // Even if CFLint fails, we might have encoding error to report
+    if (messages.length > 0) {
+        return {
+          filePath: absolutePath,
+          messages: messages,
+          fixable: !hasUtf8Bom(absolutePath) && !encodingModified,
+          output: encodingModified ? ("\ufeff" + fs.readFileSync(absolutePath, 'utf8')) : undefined
+        };
+    }
     throw new Error(`Failed to lint CFML file: ${error.message}`);
   }
 }

@@ -1,19 +1,58 @@
 import { ESLint } from 'eslint';
+import { hasUtf8Bom, ensureEncoding } from './utils.js';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Helper to check for existing config
+function hasLocalConfig(startPath) {
+    let currentDir = startPath;
+    const root = path.parse(currentDir).root;
+    const configFiles = [
+        'eslint.config.js',
+        'eslint.config.mjs',
+        'eslint.config.cjs',
+        '.eslintrc.js',
+        '.eslintrc.json',
+        '.eslintrc.yml',
+        '.eslintrc'
+    ];
+    while (currentDir !== root) {
+        for (const file of configFiles) {
+            if (fs.existsSync(path.join(currentDir, file))) {
+                return true;
+            }
+        }
+        currentDir = path.dirname(currentDir);
+    }
+    return false;
+}
 export async function lintJS(filePath, fix = false) {
     const absolutePath = path.resolve(filePath);
     if (!fs.existsSync(absolutePath)) {
         throw new Error(`File not found: ${absolutePath}`);
     }
-    // 1. Create an instance.
-    // In ESLint v9+, overrideConfig expects Flat Config format (array of objects),
-    // but types might be tricky. Let's start with empty/default config to rely on local config files.
-    // Casting to any to avoid type issues between v8/v9 typings if needed.
-    const eslint = new ESLint({
+    const projectDir = path.dirname(absolutePath);
+    const useDefaultConfig = !hasLocalConfig(projectDir);
+    let eslintOptions = {
         fix: fix,
-        overrideConfig: [] // Empty config override, relies on local config
-    });
+        overrideConfig: []
+    };
+    if (useDefaultConfig) {
+        // Point to our internal default config if none found
+        // Note: We use absolute path to our internal config file
+        const defaultConfigPath = path.resolve(__dirname, '../../eslint.config.default.mjs');
+        if (fs.existsSync(defaultConfigPath)) {
+            eslintOptions.overrideConfigFile = defaultConfigPath;
+        }
+        else {
+            // Fallback or error if internal config missing?
+            // Should not happen if deployed correctly.
+            console.warn(`Default ESLint config not found at ${defaultConfigPath}`);
+        }
+    }
+    const eslint = new ESLint(eslintOptions);
     // 2. Lint files.
     const results = await eslint.lintFiles([absolutePath]);
     // 3. Apply fixes if needed
@@ -22,6 +61,23 @@ export async function lintJS(filePath, fix = false) {
     }
     // 4. Transform results
     const messages = [];
+    // --- CHECK FOR UTF-8 BOM (FORBIDDEN FOR JS/TS) --- 
+    let encodingModified = false;
+    if (hasUtf8Bom(absolutePath)) {
+        if (fix) {
+            encodingModified = ensureEncoding(absolutePath, false);
+        }
+        if (!encodingModified) {
+            messages.push({
+                line: 1,
+                column: 1,
+                severity: 'error',
+                message: 'JS/TS file must be encoded in UTF-8 without BOM.',
+                ruleId: 'FILE_ENCODING_ERROR'
+            });
+        }
+    }
+    // ----------------------------
     let output;
     for (const result of results) {
         if (result.output) {
@@ -44,7 +100,7 @@ export async function lintJS(filePath, fix = false) {
     return {
         filePath: absolutePath,
         messages: messages,
-        fixable: results.some(r => r.fixableErrorCount > 0 || r.fixableWarningCount > 0),
-        output: output
+        fixable: (results.some(r => r.fixableErrorCount > 0 || r.fixableWarningCount > 0)) || (hasUtf8Bom(absolutePath) && !encodingModified),
+        output: encodingModified ? (output || fs.readFileSync(absolutePath, 'utf8')) : output
     };
 }

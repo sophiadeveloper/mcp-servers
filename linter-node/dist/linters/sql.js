@@ -1,8 +1,37 @@
+import { hasUtf8Bom, ensureEncoding } from './utils.js';
 import path from 'path';
 import fs from 'fs';
 import pkg from 'node-sql-parser';
 const { Parser } = pkg;
 const parser = new Parser();
+const DEFAULT_CONFIG = {
+    rules: {
+        'no-select-star': 'warning',
+        'unsafe-statement': 'error'
+    }
+};
+function loadConfig(filePath) {
+    let currentDir = path.dirname(path.resolve(filePath));
+    const root = path.parse(currentDir).root;
+    while (currentDir !== root) {
+        const configPath = path.join(currentDir, '.sql-lint.json');
+        if (fs.existsSync(configPath)) {
+            try {
+                const content = fs.readFileSync(configPath, 'utf8');
+                const userConfig = JSON.parse(content);
+                // Merge with default
+                return {
+                    rules: { ...DEFAULT_CONFIG.rules, ...userConfig.rules }
+                };
+            }
+            catch (e) {
+                console.error(`Failed to parse .sql-lint.json at ${configPath}`, e);
+            }
+        }
+        currentDir = path.dirname(currentDir);
+    }
+    return DEFAULT_CONFIG;
+}
 export async function lintSQL(filePath, fix = false) {
     const absolutePath = path.resolve(filePath);
     if (!fs.existsSync(absolutePath)) {
@@ -10,25 +39,39 @@ export async function lintSQL(filePath, fix = false) {
     }
     const content = fs.readFileSync(absolutePath, 'utf8');
     const messages = [];
+    // --- CHECK FOR UTF-8 BOM (FORBIDDEN FOR SQL) --- 
+    let encodingModified = false;
+    if (hasUtf8Bom(absolutePath)) {
+        if (fix) {
+            encodingModified = ensureEncoding(absolutePath, false);
+        }
+        if (!encodingModified) {
+            messages.push({
+                line: 1,
+                column: 1,
+                severity: 'error',
+                message: 'SQL file must be encoded in UTF-8 without BOM.',
+                ruleId: 'FILE_ENCODING_ERROR'
+            });
+        }
+    }
+    // ----------------------------
+    const config = loadConfig(absolutePath);
     let ast;
     try {
         ast = parser.astify(content, { database: 'TransactSQL' });
     }
     catch (err) {
-        // Parser error handling
-        // err usually has { LOCATION: { start: { line: 1, column: 1 } }, message: '...' }
-        // but structure depends on parser version. Usually standard Error with location properties.
         if (err.location) {
             messages.push({
                 line: err.location.start.line,
                 column: err.location.start.column,
                 severity: 'error',
-                message: `Syntax Error: ${err.message}`, // message might be verbose
+                message: `Syntax Error: ${err.message}`,
                 ruleId: 'syntax-error'
             });
         }
         else {
-            // Fallback if no location info
             messages.push({
                 line: 1,
                 column: 1,
@@ -40,48 +83,50 @@ export async function lintSQL(filePath, fix = false) {
         return {
             filePath: absolutePath,
             messages: messages,
-            fixable: false
+            fixable: false,
+            output: undefined
         };
     }
-    // If parsing succeeds, apply AST-based rules
+    const checkQueryFn = (query) => checkQuery(query, messages, config);
     if (Array.isArray(ast)) {
-        ast.forEach(query => checkQuery(query, messages));
+        ast.forEach(checkQueryFn);
     }
     else {
-        checkQuery(ast, messages);
+        checkQueryFn(ast);
     }
     return {
         filePath: absolutePath,
         messages: messages,
-        fixable: false // Basic implementation doesn't support fixing yet
+        fixable: (hasUtf8Bom(absolutePath) && !encodingModified),
+        output: encodingModified ? fs.readFileSync(absolutePath, 'utf8') : undefined
     };
 }
-function checkQuery(query, messages) {
+function checkQuery(query, messages, config) {
     if (!query)
         return;
+    // Helper to add message if rule is not 'off'
+    const report = (ruleId, line, column, message) => {
+        const severity = config.rules[ruleId] || DEFAULT_CONFIG.rules[ruleId] || 'off';
+        if (severity !== 'off') {
+            messages.push({
+                line,
+                column,
+                severity: severity,
+                message,
+                ruleId
+            });
+        }
+    };
     // Rule: Avoid SELECT *
     if (query.type === 'select' && Array.isArray(query.columns)) {
         const starColumn = query.columns.find((col) => (col.expr && col.expr.type === 'column_ref' && col.expr.column === '*') ||
-            (col === '*') // sometimes parser returns raw star
-        );
+            (col === '*'));
         if (starColumn) {
-            messages.push({
-                line: 1, // AST doesn't always preserve line numbers for nodes easily in this parser version
-                column: 1,
-                severity: 'warning',
-                message: 'Avoid using SELECT *; list columns explicitly.',
-                ruleId: 'no-select-star'
-            });
+            report('no-select-star', 1, 1, 'Avoid using SELECT *; list columns explicitly.');
         }
     }
-    // Add more rules here (e.g., check for missing WHERE in DELETE/UPDATE)
+    // Rule: Unsafe UPDATE/DELETE
     if ((query.type === 'delete' || query.type === 'update') && !query.where) {
-        messages.push({
-            line: 1,
-            column: 1,
-            severity: 'error',
-            message: `Unsafe ${query.type.toUpperCase()} statement without WHERE clause.`,
-            ruleId: 'unsafe-statement'
-        });
+        report('unsafe-statement', 1, 1, `Unsafe ${query.type.toUpperCase()} statement without WHERE clause.`);
     }
 }
