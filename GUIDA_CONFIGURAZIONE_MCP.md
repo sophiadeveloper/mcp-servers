@@ -84,6 +84,17 @@ Questo server potrebbe richiedere variabili d'ambiente per la connessione al dat
 }
 ```
 
+#### Configurazione Tunnel SSH (Opzionale)
+Il server `sql-node` supporta la connessione tramite tunnel SSH per i database **MySQL** e **PostgreSQL**. Per attivarlo, aggiungi le seguenti variabili nel file `.env` del progetto (o nel blocco `env` della configurazione sopra):
+
+*   `SSH_HOST`: Host del server SSH.
+*   `SSH_PORT`: Porta SSH (default 22).
+*   `SSH_USER`: Username SSH.
+*   `SSH_PASSWORD`: Password SSH (opzionale se si usa la chiave).
+*   `SSH_KEY_PATH`: Percorso assoluto alla chiave privata RSA (es. `C:\\Users\\utente\\.ssh\\id_rsa`).
+
+Se `SSH_HOST` è configurato, il server aprirà automaticamente un tunnel sicuro prima di tentare la connessione al database.
+
 ### C. Mantis MCP Server (`mantis-node`)
 
 Simile agli altri, punta all'index.js del progetto Mantis.

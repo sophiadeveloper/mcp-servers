@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
+import { Client } from "ssh2";
 
 const SUPPORTED_DRIVERS = ["mssql", "mysql", "postgres", "oracle"];
 
@@ -47,6 +48,58 @@ function readEnvConfig(projectPath) {
   }
 
   return envConfig;
+}
+
+/**
+ * Crea un tunnel SSH se configurato nel file .env.
+ * Restituisce una Promise che risolve al client SSH e le info del tunnel locale.
+ */
+async function setupSshTunnel(envConfig) {
+  if (!envConfig.SSH_HOST) return null;
+
+  return new Promise((resolve, reject) => {
+    const sshClient = new Client();
+    
+    sshClient.on('ready', () => {
+      // Apriamo il tunnel verso il DB_SERVER:DB_PORT
+      // Nota: lo facciamo "dinamicamente" sulla stessa porta se possibile o lasciamo che il driver si connetta a localhost:portaLocale
+      // Per semplicità, molti driver supportano la connessione a socket o host/port.
+      // Qui facciamo un forwarding semplice.
+      resolve({ sshClient });
+    }).on('error', (err) => {
+      reject(new Error(`Errore SSH: ${err.message}`));
+    });
+
+    const connConfig = {
+      host: envConfig.SSH_HOST,
+      port: parseInt(envConfig.SSH_PORT || '22'),
+      username: envConfig.SSH_USER
+    };
+
+    if (envConfig.SSH_KEY_PATH) {
+      connConfig.privateKey = fs.readFileSync(envConfig.SSH_KEY_PATH);
+    } else if (envConfig.SSH_PASSWORD) {
+      connConfig.password = envConfig.SSH_PASSWORD;
+    }
+
+    sshClient.connect(connConfig);
+  });
+}
+
+/**
+ * Esegue il port forwarding per un driver specifico.
+ */
+async function forwardPort(sshClient, targetHost, targetPort) {
+  return new Promise((resolve, reject) => {
+    sshClient.forwardOut(
+      '127.0.0.1', 0, // sorgente (non rilevante qui)
+      targetHost, targetPort,
+      (err, stream) => {
+        if (err) reject(err);
+        else resolve(stream);
+      }
+    );
+  });
 }
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -96,11 +149,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   let conn;
   let driver;
+  let sshClient;
 
   try {
     const envConfig = readEnvConfig(args.project_path);
     driver = await getDriver(envConfig.DB_TYPE);
-    const dbConfig = driver.buildConfig(envConfig);
+    let dbConfig = driver.buildConfig(envConfig);
+
+    // GESTIONE TUNNEL SSH
+    if (envConfig.SSH_HOST) {
+      const sshSetup = await setupSshTunnel(envConfig);
+      sshClient = sshSetup.sshClient;
+
+      // Per MySQL e Postgres possiamo usare lo stream direttamente se il driver lo supporta,
+      // oppure cambiare l'host in localhost e fargli usare un tunnel locale se lo creassimo con un listener.
+      // Più semplice per questi drivers: molti accettano un parametro 'stream' o 'socketPath'.
+      
+      // Se il driver supporta la connessione tramite stream (es. mysql2 e pg), lo usiamo.
+      // Altrimenti (mssql) dovremmo creare un local server (più complesso).
+      
+      // Limitiamo il supporto tunnel a MySQL e Postgres per ora se vogliamo usare lo stream, 
+      // oppure modifichiamo il driver per accettare 'stream'.
+      
+      if (['mysql', 'postgres'].includes(envConfig.DB_TYPE.toLowerCase())) {
+          const stream = await forwardPort(sshClient, dbConfig.host || envConfig.DB_SERVER, dbConfig.port || envConfig.DB_PORT);
+          dbConfig.stream = stream;
+      } else {
+          // Per MSSQL/Oracle che non supportano stream facilmente in questo modo, 
+          // avvisiamo che il tunnel non è ancora supportato per questo DB_TYPE o implementiamo un local listener.
+          // Per ora lanciamo errore per chiarezza.
+          throw new Error(`Il tunnel SSH è attualmente supportato solo per MySQL e PostgreSQL.`);
+      }
+    }
+
     conn = await driver.connect(dbConfig);
 
     // BLOCCO SICUREZZA COMUNE
@@ -136,6 +217,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return { content: [{ type: "text", text: `Errore SQL: ${err.message}` }], isError: true };
   } finally {
     if (conn && driver) await driver.close(conn);
+    // @ts-ignore
+    if (sshClient) sshClient.end();
   }
   throw new Error("Tool not found");
 });
