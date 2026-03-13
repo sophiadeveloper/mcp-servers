@@ -185,7 +185,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     conn = await driver.connect(dbConfig);
 
     // BLOCCO SICUREZZA COMUNE
-    if (args.query && /INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC|MERGE/i.test(args.query)) {
+    // Security: Use allowlist instead of blocklist. A blocklist is easily bypassed by
+    // omitted keywords (CREATE, GRANT, REVOKE, LOAD DATA INFILE, COPY, INTO OUTFILE, CALL, SET, etc.).
+    // Only permit queries that start with SELECT to enforce read-only access.
+    if (args.query && !/^\s*SELECT\b/i.test(args.query)) {
       return { content: [{ type: "text", text: "🚫 BLOCKED: Solo SELECT consentite per sicurezza." }], isError: true };
     }
 
