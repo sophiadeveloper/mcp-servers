@@ -6,7 +6,7 @@
 
 **Prevention:** Use an `isQueryReadOnly()` helper that:
 1. **Strips all SQL comments** (`/* ... */` and `-- ...`) before keyword inspection — without this, a leading comment fools a simple prefix check. Note: nested block comments (PostgreSQL `/* /* ... */ */`) are not fully stripped, but in that edge case the first-keyword check still blocks the query safely.
-2. **Allowlist first keyword** — only `SELECT` and `WITH` (for CTEs) are permitted; everything else is blocked.
+2. **Allowlist first keyword & Body blocklist** — only `SELECT` and `WITH` (for CTEs) are permitted as starting verbs. To prevent data-modifying CTEs (e.g., `WITH x AS (DELETE...) SELECT * FROM x`), keywords like `INSERT`, `UPDATE`, `DELETE`, etc., are blocked in the entire query body.
 3. **Blocks `INTO`** — catches `SELECT ... INTO OUTFILE/DUMPFILE` (MySQL filesystem write) and `SELECT INTO table` (PostgreSQL/MSSQL DDL). This is intentionally conservative: queries with `INTO` inside string literals are also blocked as a security-first tradeoff.
 4. **Blocks non-terminal semicolons** — prevents multi-statement batch attacks like `SELECT 1; DROP TABLE users`.
 

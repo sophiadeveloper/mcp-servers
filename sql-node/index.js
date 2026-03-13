@@ -123,8 +123,14 @@ function isQueryReadOnly(query) {
     .replace(/--[^\r\n]*/g, ' ')
     .trim();
 
-  // Consente solo SELECT o WITH (per le CTE)
+  // Consente inizialmente solo SELECT o WITH (per le CTE)
   if (!/^(SELECT|WITH)\b/i.test(stripped)) return false;
+
+  // Sicurezza aggiuntiva per clausole WITH: blocca operazioni di modifica dati (INSERT/UPDATE/DELETE/etc)
+  // che potrebbero essere nascoste all'interno di una CTE (es. WITH x AS (DELETE ...) SELECT * FROM x).
+  if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|MERGE|EXEC|CALL|GRANT|REVOKE)\b/i.test(stripped)) {
+    return false;
+  }
 
   // Blocca SELECT con effetti collaterali: INTO OUTFILE/DUMPFILE/tabella
   if (/\bINTO\b/i.test(stripped)) return false;
