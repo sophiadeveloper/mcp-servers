@@ -186,18 +186,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // BLOCCO SICUREZZA COMUNE
     if (args.query) {
-      // 1. Rimuoviamo le stringhe per evitare falsi positivi (es. LIKE '%insert%')
-      let cleanQuery = args.query.replace(/'([^'\\]|\\.)*'/g, ' ');
+      const originalQuery = String(args.query);
 
-      // 2. Rimuoviamo i commenti per evitare bypass
-      cleanQuery = cleanQuery
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/--.*$/gm, ' ')
+      // Rimuoviamo i commenti per evitare bypass (es. commenti prima del vero statement)
+      let normalizedQuery = originalQuery
+        .replace(/\/\*[\s\S]*?\*\//g, " ")  // commenti multi-linea /* ... */
+        .replace(/--.*$/gm, " ")            // commenti singola linea --
         .trim();
 
-      const dangerousKeywords = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC|MERGE|CREATE|REPLACE|RENAME|GRANT|REVOKE|CALL)\b/i;
-      if (dangerousKeywords.test(cleanQuery)) {
-        return { content: [{ type: "text", text: "🚫 BLOCKED: Operazione non consentita per sicurezza. Solo SELECT permesse." }], isError: true };
+      // Allowlist: accettiamo solo query che iniziano con SELECT o WITH
+      const startsWithAllowedKeyword = /^(\s*)(with|select)\b/i.test(normalizedQuery);
+      if (!startsWithAllowedKeyword) {
+        return {
+          content: [{ type: "text", text: "🚫 BLOCKED: Operazione non consentita per sicurezza. Solo SELECT permesse." }],
+          isError: true
+        };
       }
     }
 
