@@ -102,6 +102,40 @@ async function forwardPort(sshClient, targetHost, targetPort) {
   });
 }
 
+/**
+ * Verifica che una query SQL sia di sola lettura (solo SELECT).
+ * - Rimuove commenti SQL (blocco e riga) prima di controllare la prima parola chiave.
+ * - Consente SELECT e WITH (CTE: WITH ... AS (...) SELECT ...).
+ * - Blocca varianti SELECT con effetti collaterali: INTO OUTFILE/DUMPFILE (MySQL),
+ *   SELECT INTO tabella (PostgreSQL/MSSQL).
+ * - Blocca batch multi-istruzione (es. SELECT 1; DROP TABLE ...).
+ */
+function isQueryReadOnly(query) {
+  if (!query) return false;
+
+  // Rimuove commenti SQL in blocco (/* ... */) e di riga (-- ...) prima del controllo.
+  // Nota: i commenti annidati (es. PostgreSQL /* /* ... */ */) non sono gestiti completamente;
+  // in tal caso il blocco dell'accesso avviene ugualmente poiché il controllo sulla prima parola chiave fallirà.
+  // Nota: la ricerca di INTO può bloccare query con la stringa 'into' in letterali — comportamento intenzionale
+  // per sicurezza difensiva; usare un utente DB a sola lettura come misura complementare.
+  const stripped = query
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\r\n]*/g, ' ')
+    .trim();
+
+  // Consente solo SELECT o WITH (per le CTE)
+  if (!/^(SELECT|WITH)\b/i.test(stripped)) return false;
+
+  // Blocca SELECT con effetti collaterali: INTO OUTFILE/DUMPFILE/tabella
+  if (/\bINTO\b/i.test(stripped)) return false;
+
+  // Blocca batch multi-istruzione: rifiuta i punti e virgola non terminali
+  const withoutTrailing = stripped.replace(/;\s*$/, '');
+  if (/;/.test(withoutTrailing)) return false;
+
+  return true;
+}
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
@@ -185,7 +219,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     conn = await driver.connect(dbConfig);
 
     // BLOCCO SICUREZZA COMUNE
-    if (args.query && /INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC|MERGE/i.test(args.query)) {
+    // Sicurezza: si utilizza un allowlist per consentire solo query di sola lettura.
+    // Controlla la prima parola chiave SQL dopo aver rimosso i commenti iniziali.
+    // Consente SELECT e WITH (per le CTE: WITH ... AS (...) SELECT ...).
+    // Blocca batch multi-istruzione con punti e virgola non terminali (es. SELECT 1; DROP TABLE ...).
+    // Blocca varianti SELECT con effetti collaterali:
+    //   - MySQL:           SELECT ... INTO OUTFILE/DUMPFILE (scrittura su file)
+    //   - PostgreSQL/MSSQL: SELECT ... INTO tabella (crea una nuova tabella)
+    if (args.query && !isQueryReadOnly(args.query)) {
       return { content: [{ type: "text", text: "🚫 BLOCKED: Solo SELECT consentite per sicurezza." }], isError: true };
     }
 
