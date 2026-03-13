@@ -188,6 +188,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     function isSafeReadOnlyQuery(query) {
       let normalizedQuery = String(query);
 
+      // Blocca esplicitamente i "versioned comments" MySQL del tipo /*! ... */,
+      // che in MySQL possono contenere codice eseguibile e non vanno trattati come semplici commenti.
+      if (normalizedQuery.includes("/*!")) {
+        return false;
+      }
+
       // Rimuovi commenti multi-linea /* ... */ e commenti singola linea (-- e //).
       normalizedQuery = normalizedQuery
         .replace(/\/\*[\s\S]*?\*\//g, " ")  // commenti multi-linea /* ... */
