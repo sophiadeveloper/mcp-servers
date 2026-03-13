@@ -225,7 +225,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Blocca parole chiave DML/DDL e chiamate a procedure/funzioni potenzialmente pericolose.
       const forbiddenKeywords = /\b(insert|update|delete|merge|into|drop|alter|create|truncate|exec(?:ute)?|call|grant|revoke)\b/i;
-      if (forbiddenKeywords.test(normalizedQuery)) {
+      // Variante che permette spazi (inclusi quelli derivanti da commenti rimossi) tra le lettere,
+      // per evitare bypass tipo "DE/**/LETE" -> "DE LETE".
+      const forbiddenKeywordsFragmented = /\b(i\s*n\s*s\s*e\s*r\s*t|u\s*p\s*d\s*a\s*t\s*e|d\s*e\s*l\s*e\s*t\s*e|m\s*e\s*r\s*g\s*e|i\s*n\s*t\s*o|d\s*r\s*o\s*p|a\s*l\s*t\s*e\s*r|c\s*r\s*e\s*a\s*t\s*e|t\s*r\s*u\s*n\s*c\s*a\s*t\s*e|e\s*x\s*e\s*c(?:\s*u\s*t\s*e)?|c\s*a\s*l\s*l|g\s*r\s*a\s*n\s*t|r\s*e\s*v\s*o\s*k?e)\b/i;
+      if (forbiddenKeywords.test(normalizedQuery) || forbiddenKeywordsFragmented.test(normalizedQuery)) {
         return false;
       }
 
