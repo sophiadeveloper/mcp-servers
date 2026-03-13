@@ -184,19 +184,51 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     conn = await driver.connect(dbConfig);
 
-    // BLOCCO SICUREZZA COMUNE
-    if (args.query) {
-      const originalQuery = String(args.query);
+    // Funzione di validazione per garantire che la query sia effettivamente di sola lettura.
+    function isSafeReadOnlyQuery(query) {
+      let normalizedQuery = String(query);
 
-      // Rimuoviamo i commenti per evitare bypass (es. commenti prima del vero statement)
-      let normalizedQuery = originalQuery
+      // Rimuovi commenti multi-linea /* ... */ e commenti singola linea (-- e //).
+      normalizedQuery = normalizedQuery
         .replace(/\/\*[\s\S]*?\*\//g, " ")  // commenti multi-linea /* ... */
         .replace(/--.*$/gm, " ")            // commenti singola linea --
-        .trim();
+        .replace(/\/\/.*$/gm, " ");         // commenti stile // ...
 
-      // Allowlist: accettiamo solo query che iniziano con SELECT o WITH
-      const startsWithAllowedKeyword = /^(\s*)(with|select)\b/i.test(normalizedQuery);
-      if (!startsWithAllowedKeyword) {
+      // Rimuovi le string literal per evitare bypass tramite testo tra virgolette.
+      const stringLiteralPatterns = [
+        /'(?:''|[^'])*'/g,                 // stringhe singolo apice, con escaping SQL ''
+        /"(?:[^"\\]|\\.)*"/g,              // stringhe doppio apice con escape tipo C
+        /`(?:[^`\\]|\\.)*`/g               // identificatori/stringhe backtick (MySQL, ecc.)
+      ];
+      for (const re of stringLiteralPatterns) {
+        normalizedQuery = normalizedQuery.replace(re, " ");
+      }
+
+      // Normalizza spazi bianchi.
+      normalizedQuery = normalizedQuery.trim();
+
+      // Allowlist: la query deve iniziare con SELECT o WITH.
+      if (!/^(\s*)(with|select)\b/i.test(normalizedQuery)) {
+        return false;
+      }
+
+      // Blocca multi-statement: nessun punto e virgola deve rimanere dopo la normalizzazione.
+      if (normalizedQuery.includes(";")) {
+        return false;
+      }
+
+      // Blocca parole chiave DML/DDL e chiamate a procedure/funzioni potenzialmente pericolose.
+      const forbiddenKeywords = /\b(insert|update|delete|merge|into|drop|alter|create|truncate|exec(?:ute)?|call|grant|revoke)\b/i;
+      if (forbiddenKeywords.test(normalizedQuery)) {
+        return false;
+      }
+
+      return true;
+    }
+
+    // BLOCCO SICUREZZA COMUNE
+    if (args.query) {
+      if (!isSafeReadOnlyQuery(args.query)) {
         return {
           content: [{ type: "text", text: "🚫 BLOCKED: Operazione non consentita per sicurezza. Solo SELECT permesse." }],
           isError: true
