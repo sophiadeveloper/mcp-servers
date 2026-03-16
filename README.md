@@ -289,17 +289,71 @@ Ecco come appare la configurazione per un ambiente Ubuntu.
 *   **Permessi**: Assicurati che l'utente remoto abbia i permessi di lettura sulla cartella dei server e di esecuzione su Node.
 *   **NVM**: Se usi NVM, il percorso di Node cambia tra le versioni. È consigliabile usare il path assoluto restituito da `which node` per evitare problemi di avvio.
 
+## 6. Integrazione Skills e MCP negli IDE
+
+Oltre alla configurazione tecnica dei server (Capitolo 1 e 2), è possibile "istruire" gli agenti AI all'interno dei vari IDE per utilizzare al meglio le procedure definite nella cartella `skills/`.
+
+### A. VSCode (GitHub Copilot / Cline / Roo Code)
+A partire dalle versioni 2026, VS Code e le estensioni agentiche hanno standardizzato il supporto nativo per le Agent Skills.
+
+1.  **Server MCP**: Usa `cline_mcp_settings.json` come descritto sopra.
+2.  **Percorso Skills (Nativo)**: Copia l'alberatura della cartella `skills/` in:
+    *   **Progetto**: `.github/skills/` (per GitHub Copilot Agent Mode).
+    *   **Progetto**: `.cursorrules` (per Cursor, incollando il contenuto testuale).
+3.  **Utilizzo**: Puoi invocare le skill con i comandi slash (es. `/mcp-database-expert`) o lasciare che l'agente le attivi automaticamente.
+
+### B. Goose (Block)
+Goose supporta le skills in modo fluido e scansiona automaticamente diverse directory all'avvio.
+
+1.  **Percorso Skills (Globale)**: Incolla le cartelle delle skills in:
+    *   `~/.config/goose/skills/` (Specifico Goose)
+    *   `~/.config/agents/skills/` (Generico per più agenti)
+    *   `~/.claude/skills/` (Condiviso con Claude Desktop)
+2.  **Sinergia**: L'MCP fornisce l'accesso tecnico (strumenti), mentre la skill nel file `SKILL.md` detta il processo aziendale e le regole operative.
+
+### C. Google Antigravity
+Essendo un IDE "agent-first", Antigravity mette le skills al centro del flusso di lavoro seguendo il principio della *progressive disclosure*.
+
+1.  **Percorso Skills**:
+    *   **Progetto**: `.agent/skills/`
+    *   **Globale**: `~/.gemini/antigravity/skills/`
+2.  **Funzionamento**: L'agente legge nomi e descrizioni all'avvio e carica l'intero contenuto solo quando la skill diventa rilevante per il task, ottimizzando i token.
+
+### D. Claude Code (CLI)
+1.  **Percorso Skills**: Claude Code scansiona la root del progetto. Mantenere la cartella `skills/` nella root è sufficiente affinché l'agente le utilizzi come contesto operativo.
+
+### E. GPT Codex (VS Code Extension)
+Codex utilizza una configurazione unificata per i server MCP e le skills, preferendo il formato **TOML**.
+
+1.  **Server MCP**:
+    *   **File di configurazione**: `~/.codex/config.toml` (globale) o `.codex/config.toml` (progetto).
+    *   Esempio di aggiunta server:
+        ```toml
+        [mcp_servers.git-server]
+        command = "node"
+        args = ["C:/mcp-servers/git-node/index.js"]
+        ```
+    *   Puoi anche aggiungerli tramite comando CLI: `codex mcp add <nome> -- node index.js`.
+2.  **Percorso Skills**: Incolla le cartelle delle skills in:
+    *   **Progetto**: `.codex/skills/`
+3.  **Attivazione**: Puoi attivare una skill manualmente scrivendo `$` seguito dal nome della skill nella chat, oppure lasciare che Codex la attivi automaticamente in base alla `description` nel frontmatter del file `SKILL.md`.
+
+### F. Altri IDE AI-First
+Per strumenti che non hanno ancora un'integrazione MCP nativa tramite configurazione JSON:
+
+1.  **Proxy**: Usa un tool come `mcp-proxy` per esporre i server locali.
+2.  **Skills come Prompt**: Inserisci le istruzioni delle skills nel "System Prompt" o "Context Window" dell'IDE. Le nostre skills sono scritte in formato Markdown proprio per essere facilmente digerite da qualsiasi LLM come istruzioni di sistema.
+
 ---
 
-## 5. Troubleshooting (Risoluzione Problemi)
+## 7. Manutenzione delle Skills
 
-*   **Il server non si avvia / Pallino rosso**:
-    *   Controlla i percorsi nel JSON: sono corretti? Esistono i file?
-    *   Controlla i log dell'editor (Output -> MCP Server Log) per vedere l'errore specifico.
-*   **Errore "command not found" (es. git)**:
-    *   Su Windows: Aggiungi il percorso alla variabile `PATH` nel JSON.
-    *   Su Linux: Verifica che il comando sia nel PATH o usa il percorso assoluto (es. `/usr/bin/git`).
-*   **Modifiche non rilevate**:
-    *   Dopo aver modificato il file JSON di configurazione, riavvia Antigravity o usa il comando "Reload Window".
-*   **Errore `esbuild` su nuovo ambiente**:
-    *   Se il server `linter-node` non parte e ricevi errori legati a `esbuild` o binari mancanti, prova a eseguire `npm rebuild esbuild` nella cartella `d:\mcp-servers\linter-node`. Questo ricompila le dipendenze native per il tuo sistema corrente.
+Le skills contenute nella cartella `skills/` sono pacchettizzate per **Gemini CLI**. Se desideri aggiornarle o crearne di nuove:
+
+1.  Modifica il file `SKILL.md` nella sottocartella specifica.
+2.  (Opzionale) Se usi Gemini CLI, ricrea il pacchetto:
+    ```bash
+    node ./scripts/package_skill.cjs ./skills/nome-skill
+    ```
+3.  Reinstalla la skill per aggiornare la memoria globale dell'agente.
+
