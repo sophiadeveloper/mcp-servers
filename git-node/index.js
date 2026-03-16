@@ -10,7 +10,7 @@ import path from "path";
 const execAsync = util.promisify(exec);
 
 const server = new Server(
-  { name: "git-node-manager", version: "3.1.0" },
+  { name: "git-node-manager", version: "3.2.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -212,6 +212,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["project_path", "file_path", "commit_hash"],
         },
+      },
+      {
+        name: "git_list_files",
+        description: "Elenca i file modificati in un commit, in un range di commit, o in un branch.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            revision: { type: "string", description: "Commit hash, branch name, o range (es. 'commit1..commit2'). Default: HEAD (ultimo commit)." }
+          },
+          required: ["project_path"]
+        }
       }
     ],
   };
@@ -451,6 +463,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "git_restore_file") {
       await runGit(`checkout ${args.commit_hash} -- "${args.file_path}"`, projectPath);
       return { content: [{ type: "text", text: `✅ File ripristinato dal commit ${args.commit_hash}: ${args.file_path}` }] };
+    }
+
+    // 15. LIST FILES
+    if (name === "git_list_files") {
+      const rev = args.revision || "HEAD";
+      const output = await runGit(`diff-tree --no-commit-id --name-only -r ${rev}`, projectPath);
+      return { content: [{ type: "text", text: output || "Nessun cambiamento rilevato." }] };
     }
 
     throw new Error(`Tool sconosciuto: ${name}`);
