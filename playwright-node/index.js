@@ -224,10 +224,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "browser_screenshot",
-        description: "Captures a Base64-encoded screenshot of the current viewport.",
+        description: "Captures a Base64-encoded screenshot of the current viewport. Optionally saves to disk.",
         inputSchema: {
           type: "object",
-          properties: {},
+          properties: {
+            path: { type: "string", description: "Optional absolute path where to save the PNG file on disk" },
+          },
         },
       },
       {
@@ -465,12 +467,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "browser_screenshot": {
-        const buffer = await page.screenshot({ encoding: "base64", fullPage: false });
+        const savePath = args && args.path ? String(args.path) : null;
+        const buffer = await page.screenshot({ fullPage: false });
+        const currentUrl = page.url();
+        const title = await page.title();
+        if (savePath) {
+          const { writeFileSync, mkdirSync } = await import("fs");
+          const { dirname } = await import("path");
+          mkdirSync(dirname(savePath), { recursive: true });
+          writeFileSync(savePath, buffer);
+        }
         return {
           content: [{
             type: "image",
-            data: buffer,
+            data: buffer.toString("base64"),
             mimeType: "image/png"
+          }, {
+            type: "text",
+            text: `Screenshot catturato. URL: ${currentUrl}, Titolo: ${title}${savePath ? ` | Salvato: ${savePath}` : ''}`
           }],
         };
       }
