@@ -185,112 +185,49 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "docs_scan_file",
-        description: "Scansiona un singolo file .md e lo indicizza in uno scaffale. Se lo scaffale non esiste viene creato automaticamente.",
+        name: "docs_management",
+        description: "Gestisce l'indicizzazione e l'organizzazione degli scaffali di documentazione.",
         inputSchema: {
           type: "object",
           properties: {
-            file_path: { type: "string", description: "Percorso assoluto al file .md da scansionare." },
-            shelf: { type: "string", description: "Nome dello scaffale in cui indicizzare il documento." }
+            action: {
+              type: "string",
+              enum: ["scan_file", "scan_folder", "list_shelves", "create_shelf", "update_shelf", "remove_shelf"],
+              description: "Operazione: 'scan_file' (singolo MD), 'scan_folder' (intera cartella), 'list_shelves' (stato scaffali), 'create_shelf', 'update_shelf', 'remove_shelf'."
+            },
+            file_path: { type: "string" },
+            folder_path: { type: "string" },
+            shelf: { type: "string", description: "Nome dello scaffale." },
+            recursive: { type: "boolean", default: true },
+            name: { type: "string", description: "Nuovo nome per create/update." },
+            description: { type: "string" },
+            new_name: { type: "string" },
+            new_description: { type: "string" }
           },
-          required: ["file_path", "shelf"]
+          required: ["action"]
         }
       },
       {
-        name: "docs_scan_folder",
-        description: "Scansiona una cartella per file .md e li indicizza tutti in uno scaffale. Se lo scaffale non esiste viene creato automaticamente.",
+        name: "docs_navigation",
+        description: "Ricerca e lettura della documentazione indicizzata.",
         inputSchema: {
           type: "object",
           properties: {
-            folder_path: { type: "string", description: "Percorso assoluto alla cartella da scansionare." },
-            shelf: { type: "string", description: "Nome dello scaffale in cui indicizzare i documenti." },
-            recursive: { type: "boolean", description: "Se true (default), scansiona anche le sotto-cartelle." }
+            action: {
+              type: "string",
+              enum: ["search", "read_document", "list_documents"],
+              description: "Operazione: 'search' (full-text), 'read_document' (leggi MD), 'list_documents' (elenca file in scaffale)."
+            },
+            query: { type: "string", description: "Termine di ricerca." },
+            shelf: { type: "string" },
+            document_id: { type: "number" },
+            limit: { type: "number", default: 10 },
+            start_line: { type: "number" },
+            end_line: { type: "number" },
+            search_string: { type: "string" },
+            context_lines: { type: "number", default: 10 }
           },
-          required: ["folder_path", "shelf"]
-        }
-      },
-      {
-        name: "docs_search",
-        description: "Ricerca full-text nella documentazione indicizzata. Restituisce risultati ordinati per rilevanza con snippet di contesto.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "Testo da cercare." },
-            shelf: { type: "string", description: "Opzionale: limita la ricerca a uno scaffale specifico." },
-            limit: { type: "number", description: "Numero massimo di risultati (default 10)." }
-          },
-          required: ["query"]
-        }
-      },
-      {
-        name: "docs_read_document",
-        description: "Recupera il contenuto markdown di un documento usando l'ID restituito da docs_search. Predefinito: intero documento. Usa start_line/end_line o search_string per estrarre sotto-porzioni.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            document_id: { type: "number", description: "L'ID univoco del documento." },
-            start_line: { type: "number", description: "Riga di inizio opzionale (1-based)." },
-            end_line: { type: "number", description: "Riga di fine opzionale (1-based)." },
-            search_string: { type: "string", description: "Stringa da cercare nel documento (ignora maiuscole). Se fornito, estrae i blocchi corrispondenti con contesto." },
-            context_lines: { type: "number", description: "Numero di righe di contesto prima e dopo (default 10)." }
-          },
-          required: ["document_id"]
-        }
-      },
-      {
-        name: "docs_list_shelves",
-        description: "Elenca tutti gli scaffali disponibili con conteggio documenti e descrizione.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-          required: []
-        }
-      },
-      {
-        name: "docs_list_documents",
-        description: "Elenca i documenti indicizzati in uno scaffale.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            shelf: { type: "string", description: "Nome dello scaffale." }
-          },
-          required: ["shelf"]
-        }
-      },
-      {
-        name: "docs_create_shelf",
-        description: "Crea un nuovo scaffale con nome e descrizione.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Nome univoco dello scaffale." },
-            description: { type: "string", description: "Descrizione dello scaffale." }
-          },
-          required: ["name"]
-        }
-      },
-      {
-        name: "docs_update_shelf",
-        description: "Modifica il nome e/o la descrizione di uno scaffale esistente.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            shelf: { type: "string", description: "Nome attuale dello scaffale da modificare." },
-            new_name: { type: "string", description: "Nuovo nome (opzionale)." },
-            new_description: { type: "string", description: "Nuova descrizione (opzionale)." }
-          },
-          required: ["shelf"]
-        }
-      },
-      {
-        name: "docs_remove_shelf",
-        description: "Rimuove uno scaffale e tutti i suoi documenti indicizzati.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            shelf: { type: "string", description: "Nome dello scaffale da rimuovere." }
-          },
-          required: ["shelf"]
+          required: ["action"]
         }
       }
     ]
@@ -301,304 +238,144 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
-    if (name === "docs_scan_file") {
-      const filePath = path.resolve(args.file_path);
-      if (!fs.existsSync(filePath)) throw new Error(`File non trovato: ${filePath}`);
-      if (!filePath.toLowerCase().endsWith(".md")) throw new Error("Solo file .md sono supportati.");
+    // --- 1. DOCS MANAGEMENT ---
+    if (name === "docs_management") {
+      switch (args.action) {
+        case "scan_file": {
+          const filePath = path.resolve(args.file_path);
+          if (!fs.existsSync(filePath)) throw new Error(`File non trovato: ${filePath}`);
+          const content = fs.readFileSync(filePath, "utf-8");
+          const title = extractTitle(content, filePath);
+          const shelf = await ensureShelf(args.shelf);
+          const result = await upsertDocument(shelf.id, filePath, title, content, Buffer.byteLength(content, "utf-8"));
+          return { content: [{ type: "text", text: `✅ File ${result.action}: "${title}" → scaffale "${args.shelf}"` }] };
+        }
 
-      const content = fs.readFileSync(filePath, "utf-8");
-      const title = extractTitle(content, filePath);
-      const sizeBytes = Buffer.byteLength(content, "utf-8");
-
-      const shelf = await ensureShelf(args.shelf);
-      const result = await upsertDocument(shelf.id, filePath, title, content, sizeBytes);
-
-      return {
-        content: [{
-          type: "text",
-          text: `✅ File ${result.action}: "${title}" → scaffale "${args.shelf}" (${sizeBytes} bytes)`
-        }]
-      };
-    }
-
-    if (name === "docs_scan_folder") {
-      const folderPath = path.resolve(args.folder_path);
-      if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
-        throw new Error(`Cartella non trovata: ${folderPath}`);
-      }
-
-      const recursive = args.recursive !== false;
-      const files = findMarkdownFiles(folderPath, recursive);
-
-      if (files.length === 0) {
-        return { content: [{ type: "text", text: `⚠️ Nessun file .md trovato in: ${folderPath}` }] };
-      }
-
-      const shelf = await ensureShelf(args.shelf);
-      const results = { inserted: 0, updated: 0, errors: [] };
-
-      // In sqlite3 this can be done in parallel or sequentially. We do it sequentially.
-      await runQuery("BEGIN TRANSACTION");
-      try {
-        for (const filePath of files) {
+        case "scan_folder": {
+          const folderPath = path.resolve(args.folder_path);
+          if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) throw new Error(`Cartella non trovata: ${folderPath}`);
+          const files = findMarkdownFiles(folderPath, args.recursive !== false);
+          if (files.length === 0) return { content: [{ type: "text", text: `⚠️ Nessun file .md trovato.` }] };
+          const shelf = await ensureShelf(args.shelf);
+          const res = { inserted: 0, updated: 0, errors: [] };
+          await runQuery("BEGIN TRANSACTION");
           try {
-            const content = fs.readFileSync(filePath, "utf-8");
-            const title = extractTitle(content, filePath);
-            const sizeBytes = Buffer.byteLength(content, "utf-8");
-
-            const existing = await getQuery("SELECT id FROM documents WHERE shelf_id = ? AND file_path = ?", [shelf.id, filePath]);
-            if (existing) {
-              await runQuery("UPDATE documents SET title = ?, content = ?, size_bytes = ?, scanned_at = datetime('now') WHERE id = ?", [title, content, sizeBytes, existing.id]);
-              results.updated++;
-            } else {
-              await runQuery("INSERT INTO documents (shelf_id, file_path, title, content, size_bytes) VALUES (?, ?, ?, ?, ?)", [shelf.id, filePath, title, content, sizeBytes]);
-              results.inserted++;
+            for (const f of files) {
+              try {
+                const doc = fs.readFileSync(f, "utf-8");
+                const title = extractTitle(doc, f);
+                const size = Buffer.byteLength(doc, "utf-8");
+                const existing = await getQuery("SELECT id FROM documents WHERE shelf_id = ? AND file_path = ?", [shelf.id, f]);
+                if (existing) { await runQuery("UPDATE documents SET title = ?, content = ?, size_bytes = ?, scanned_at = datetime('now') WHERE id = ?", [title, doc, size, existing.id]); res.updated++; }
+                else { await runQuery("INSERT INTO documents (shelf_id, file_path, title, content, size_bytes) VALUES (?, ?, ?, ?, ?)", [shelf.id, f, title, doc, size]); res.inserted++; }
+              } catch (e) { res.errors.push({ file: f, error: e.message }); }
             }
-          } catch (err) {
-            results.errors.push({ file: filePath, error: err.message });
+            await runQuery("COMMIT");
+          } catch (e) { await runQuery("ROLLBACK"); throw e; }
+          return { content: [{ type: "text", text: `✅ Scansione completata Scaffale "${args.shelf}": Inseriti: ${res.inserted} | Aggiornati: ${res.updated}` }] };
+        }
+
+        case "list_shelves": {
+          const shelves = await allQuery(`SELECT s.name, s.description, COUNT(d.id) AS document_count FROM shelves s LEFT JOIN documents d ON d.shelf_id = s.id GROUP BY s.id ORDER BY s.name`);
+          return { content: [{ type: "text", text: JSON.stringify(shelves, null, 2) }] };
+        }
+
+        case "create_shelf": {
+          const existing = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.name]);
+          if (existing) throw new Error(`Lo scaffale "${args.name}" esiste già.`);
+          await runQuery("INSERT INTO shelves (name, description) VALUES (?, ?)", [args.name, args.description || ""]);
+          return { content: [{ type: "text", text: `✅ Scaffale "${args.name}" creato.` }] };
+        }
+
+        case "update_shelf": {
+          const s = await getQuery("SELECT * FROM shelves WHERE name = ?", [args.shelf]);
+          if (!s) throw new Error(`Scaffale non trovato: ${args.shelf}`);
+          const newName = args.new_name || s.name;
+          const newDesc = args.new_description !== undefined ? args.new_description : s.description;
+          await runQuery("UPDATE shelves SET name = ?, description = ? WHERE id = ?", [newName, newDesc, s.id]);
+          return { content: [{ type: "text", text: `✅ Scaffale aggiornato: "${s.name}" → "${newName}"` }] };
+        }
+
+        case "remove_shelf": {
+          const s = await getQuery("SELECT id, name FROM shelves WHERE name = ?", [args.shelf]);
+          if (!s) throw new Error(`Scaffale non trovato: ${args.shelf}`);
+          await runQuery("DELETE FROM documents WHERE shelf_id = ?", [s.id]);
+          await runQuery("DELETE FROM shelves WHERE id = ?", [s.id]);
+          return { content: [{ type: "text", text: `✅ Scaffale "${s.name}" rimosso.` }] };
+        }
+        default: throw new Error(`Azione non valida per docs_management: ${args.action}`);
+      }
+    }
+
+    // --- 2. DOCS NAVIGATION ---
+    if (name === "docs_navigation") {
+      switch (args.action) {
+        case "search": {
+          const limit = args.limit || 10;
+          let rows = [];
+          if (hasFTS5) {
+            let sql = `SELECT d.id, d.title, d.file_path, s.name AS shelf_name, snippet(documents_fts, 1, '>>>', '<<<', '...', 40) AS snippet FROM documents_fts JOIN documents d ON d.id = documents_fts.rowid JOIN shelves s ON s.id = d.shelf_id WHERE documents_fts MATCH ?`;
+            let params = [args.query];
+            if (args.shelf) {
+              const s = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.shelf]);
+              if (!s) throw new Error(`Scaffale non trovato: ${args.shelf}`);
+              sql += ` AND d.shelf_id = ?`;
+              params.push(s.id);
+            }
+            sql += ` ORDER BY rank LIMIT ?`;
+            params.push(limit);
+            rows = await allQuery(sql, params);
+          } else {
+            const term = `%${args.query}%`;
+            let sql = `SELECT d.id, d.title, d.file_path, d.content, s.name AS shelf_name FROM documents d JOIN shelves s ON s.id = d.shelf_id WHERE (d.title LIKE ? OR d.content LIKE ?)`;
+            let params = [term, term];
+            if (args.shelf) {
+              const s = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.shelf]);
+              if (!s) throw new Error(`Scaffale non trovato: ${args.shelf}`);
+              sql += ` AND d.shelf_id = ?`;
+              params.push(s.id);
+            }
+            sql += ` LIMIT ?`;
+            params.push(limit);
+            const raw = await allQuery(sql, params);
+            rows = raw.map(r => ({ ...r, snippet: formatSnippet(r.content, args.query) }));
           }
-        }
-        await runQuery("COMMIT");
-      } catch (err) {
-        await runQuery("ROLLBACK");
-        throw err;
-      }
-
-      let summary = `✅ Scansione completata → scaffale "${args.shelf}"\n`;
-      summary += `   File trovati: ${files.length}\n`;
-      summary += `   Inseriti: ${results.inserted} | Aggiornati: ${results.updated}`;
-      if (results.errors.length > 0) {
-        summary += `\n   ⚠️ Errori: ${results.errors.length}`;
-        for (const e of results.errors) {
-          summary += `\n     - ${e.file}: ${e.error}`;
-        }
-      }
-
-      return { content: [{ type: "text", text: summary }] };
-    }
-
-    if (name === "docs_search") {
-      const limit = args.limit || 10;
-      let rows = [];
-
-      if (hasFTS5) {
-        let sql = `
-          SELECT d.id, d.title, d.file_path, s.name AS shelf_name,
-                 snippet(documents_fts, 1, '>>>', '<<<', '...', 40) AS snippet
-          FROM documents_fts
-          JOIN documents d ON d.id = documents_fts.rowid
-          JOIN shelves s ON s.id = d.shelf_id
-          WHERE documents_fts MATCH ?
-        `;
-        let params = [args.query];
-
-        if (args.shelf) {
-          const shelf = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.shelf]);
-          if (!shelf) throw new Error(`Scaffale non trovato: ${args.shelf}`);
-          sql += ` AND d.shelf_id = ?`;
-          params.push(shelf.id);
+          if (rows.length === 0) return { content: [{ type: "text", text: "Nessun risultato." }] };
+          return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
         }
 
-        sql += ` ORDER BY rank LIMIT ?`;
-        params.push(limit);
-
-        rows = await allQuery(sql, params);
-      } else {
-        const searchTerm = `%${args.query}%`;
-        let sql = `
-          SELECT d.id, d.title, d.file_path, d.content, s.name AS shelf_name
-          FROM documents d
-          JOIN shelves s ON s.id = d.shelf_id
-          WHERE (d.title LIKE ? OR d.content LIKE ?)
-        `;
-        let params = [searchTerm, searchTerm];
-
-        if (args.shelf) {
-          const shelf = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.shelf]);
-          if (!shelf) throw new Error(`Scaffale non trovato: ${args.shelf}`);
-          sql += ` AND d.shelf_id = ?`;
-          params.push(shelf.id);
-        }
-
-        sql += ` LIMIT ?`;
-        params.push(limit);
-
-        const rawRows = await allQuery(sql, params);
-        rows = rawRows.map(r => ({
-          id: r.id,
-          title: r.title,
-          file_path: r.file_path,
-          shelf_name: r.shelf_name,
-          snippet: formatSnippet(r.content, args.query)
-        }));
-      }
-
-      if (rows.length === 0) {
-        return { content: [{ type: "text", text: `Nessun risultato trovato per: "${args.query}"` }] };
-      }
-
-      const results = rows.map((row, idx) => ({
-        position: idx + 1,
-        id: row.id,
-        title: row.title,
-        shelf: row.shelf_name,
-        file_path: row.file_path,
-        snippet: row.snippet
-      }));
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ query: args.query, engine: hasFTS5 ? "fts5" : "like", total: results.length, results }, null, 2)
-        }]
-      };
-    }
-
-    if (name === "docs_read_document") {
-      const doc = await getQuery(`
-        SELECT d.id, d.title, d.file_path, d.content, s.name AS shelf_name
-        FROM documents d
-        JOIN shelves s ON s.id = d.shelf_id
-        WHERE d.id = ?
-      `, [args.document_id]);
-
-      if (!doc) throw new Error(`Documento non trovato con ID: ${args.document_id}`);
-
-      let outContent = doc.content;
-      
-      const lines = outContent.split(/\r?\n/);
-      
-      if (args.search_string) {
-        const queryTerm = args.search_string.toLowerCase();
-        const contextLines = args.context_lines !== undefined ? Math.max(0, args.context_lines) : 10;
-        let matchedBlocks = [];
-        
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].toLowerCase().includes(queryTerm)) {
-            const start = Math.max(0, i - contextLines);
-            const end = Math.min(lines.length, i + contextLines + 1);
-            let block = lines.slice(start, end).map((l, idx) => `${start + idx + 1}: ${l}`).join('\n');
-            matchedBlocks.push(`--- Match at line ${i + 1} ---\n` + block);
+        case "read_document": {
+          const doc = await getQuery(`SELECT d.title, d.file_path, d.content, s.name AS shelf_name FROM documents d JOIN shelves s ON s.id = d.shelf_id WHERE d.id = ?`, [args.document_id]);
+          if (!doc) throw new Error(`Documento non trovato ID: ${args.document_id}`);
+          let out = doc.content;
+          const lines = out.split(/\r?\n/);
+          if (args.search_string) {
+            const q = args.search_string.toLowerCase();
+            const ctx = args.context_lines || 10;
+            let blocks = [];
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].toLowerCase().includes(q)) {
+                const s = Math.max(0, i - ctx), e = Math.min(lines.length, i + ctx + 1);
+                blocks.push(`--- Match at line ${i + 1} ---\n` + lines.slice(s, e).map((l, idx) => `${s + idx + 1}: ${l}`).join('\n'));
+              }
+            }
+            out = blocks.length > 0 ? blocks.join('\n\n') : `Nessun match per "${args.search_string}"`;
+          } else if (args.start_line || args.end_line) {
+            const s = args.start_line ? Math.max(1, args.start_line) - 1 : 0;
+            const e = args.end_line ? Math.min(lines.length, args.end_line) : lines.length;
+            out = lines.slice(s, e).map((l, idx) => `${s + idx + 1}: ${l}`).join('\n');
           }
+          return { content: [{ type: "text", text: `Doc: ${doc.title} (${doc.shelf_name})\n\n${out}` }] };
         }
-        
-        if (matchedBlocks.length > 0) {
-           outContent = matchedBlocks.join('\n\n');
-        } else {
-           outContent = `Nessuna corrispondenza trovata per: "${args.search_string}"`;
+
+        case "list_documents": {
+          const s = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.shelf]);
+          if (!s) throw new Error(`Scaffale non trovato: ${args.shelf}`);
+          const docs = await allQuery(`SELECT id, title, file_path, size_bytes FROM documents WHERE shelf_id = ? ORDER BY title`, [s.id]);
+          return { content: [{ type: "text", text: JSON.stringify(docs, null, 2) }] };
         }
-      } else if (args.start_line !== undefined || args.end_line !== undefined) {
-        const start = args.start_line ? Math.max(1, args.start_line) - 1 : 0;
-        const end = args.end_line ? Math.min(lines.length, args.end_line) : lines.length;
-        outContent = lines.slice(start, end).map((l, idx) => `${start + idx + 1}: ${l}`).join('\n');
+        default: throw new Error(`Azione non valida per docs_navigation: ${args.action}`);
       }
-
-      return {
-        content: [{
-          type: "text",
-          text: `Titolo: ${doc.title}\nScaffale: ${doc.shelf_name}\nPercorso Originale: ${doc.file_path}\n\n${outContent}`
-        }]
-      };
-    }
-
-    if (name === "docs_list_shelves") {
-      const shelves = await allQuery(`
-        SELECT s.name, s.description, s.created_at,
-               COUNT(d.id) AS document_count,
-               COALESCE(SUM(d.size_bytes), 0) AS total_bytes
-        FROM shelves s
-        LEFT JOIN documents d ON d.shelf_id = s.id
-        GROUP BY s.id
-        ORDER BY s.name
-      `);
-
-      if (shelves.length === 0) {
-        return { content: [{ type: "text", text: "Nessuno scaffale trovato. Usa docs_scan_file o docs_scan_folder per iniziare." }] };
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(shelves, null, 2)
-        }]
-      };
-    }
-
-    if (name === "docs_list_documents") {
-      const shelf = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.shelf]);
-      if (!shelf) throw new Error(`Scaffale non trovato: ${args.shelf}`);
-
-      const docs = await allQuery(`
-        SELECT id, title, file_path, size_bytes, scanned_at
-        FROM documents
-        WHERE shelf_id = ?
-        ORDER BY title
-      `, [shelf.id]);
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ shelf: args.shelf, count: docs.length, documents: docs }, null, 2)
-        }]
-      };
-    }
-
-    if (name === "docs_create_shelf") {
-      const existing = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.name]);
-      if (existing) throw new Error(`Lo scaffale "${args.name}" esiste già.`);
-
-      await runQuery("INSERT INTO shelves (name, description) VALUES (?, ?)", [args.name, args.description || ""]);
-
-      return {
-        content: [{
-          type: "text",
-          text: `✅ Scaffale "${args.name}" creato con successo.`
-        }]
-      };
-    }
-
-    if (name === "docs_update_shelf") {
-      const shelf = await getQuery("SELECT * FROM shelves WHERE name = ?", [args.shelf]);
-      if (!shelf) throw new Error(`Scaffale non trovato: ${args.shelf}`);
-
-      if (!args.new_name && args.new_description === undefined) {
-        throw new Error("Specificare almeno new_name o new_description.");
-      }
-
-      const newName = args.new_name || shelf.name;
-      const newDesc = args.new_description !== undefined ? args.new_description : shelf.description;
-
-      if (args.new_name && args.new_name !== shelf.name) {
-        const conflict = await getQuery("SELECT id FROM shelves WHERE name = ?", [args.new_name]);
-        if (conflict) throw new Error(`Lo scaffale "${args.new_name}" esiste già.`);
-      }
-
-      await runQuery("UPDATE shelves SET name = ?, description = ? WHERE id = ?", [newName, newDesc, shelf.id]);
-
-      return {
-        content: [{
-          type: "text",
-          text: `✅ Scaffale aggiornato: "${shelf.name}" → nome: "${newName}", descrizione: "${newDesc}"`
-        }]
-      };
-    }
-
-    if (name === "docs_remove_shelf") {
-      const shelf = await getQuery("SELECT id, name FROM shelves WHERE name = ?", [args.shelf]);
-      if (!shelf) throw new Error(`Scaffale non trovato: ${args.shelf}`);
-
-      const docCountData = await getQuery("SELECT COUNT(*) AS cnt FROM documents WHERE shelf_id = ?", [shelf.id]);
-      const docCount = docCountData.cnt;
-
-      await runQuery("DELETE FROM documents WHERE shelf_id = ?", [shelf.id]);
-      await runQuery("DELETE FROM shelves WHERE id = ?", [shelf.id]);
-
-      return {
-        content: [{
-          type: "text",
-          text: `✅ Scaffale "${shelf.name}" rimosso con ${docCount} documenti.`
-        }]
-      };
     }
 
     throw new Error(`Tool sconosciuto: ${name}`);

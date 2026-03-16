@@ -24,7 +24,6 @@ async function runGit(command, projectPath) {
       windowsHide: true,
       maxBuffer: 1024 * 1024 * 10
     });
-    // Ignoriamo stderr non bloccanti (es. switch branch info)
     if (stderr && !stdout && !stderr.includes("Switched") && !stderr.includes("Rebase")) {
       console.error(`Git Potential Error: ${stderr}`);
     }
@@ -37,192 +36,72 @@ async function runGit(command, projectPath) {
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
-      // --- TOOL DI LETTURA/ANALISI ---
       {
-        name: "git_status",
-        description: "Status del workspace.",
-        inputSchema: {
-          type: "object", properties: { project_path: { type: "string" } }, required: ["project_path"]
-        },
-      },
-      {
-        name: "git_diff_working",
-        description: "Diff del lavoro attuale (Unstaged). Utile per verificare le correzioni prima di fare Add.",
-        inputSchema: {
-          type: "object", properties: { project_path: { type: "string" }, cached: { type: "boolean" } }, required: ["project_path"]
-        },
-      },
-      {
-        name: "git_show_commit",
-        description: "Dettagli di un commit passato.",
-        inputSchema: {
-          type: "object", properties: { project_path: { type: "string" }, commit_hash: { type: "string" }, file_path: { type: "string", description: "Opzionale: limita il diff a un file specifico." } }, required: ["project_path", "commit_hash"]
-        },
-      },
-
-
-      {
-        name: "git_history",
-        description: "Log dei commit filtrabile.",
+        name: "git_query",
+        description: "Esplora lo stato e la storia del repository Git (Sola Lettura).",
         inputSchema: {
           type: "object",
           properties: {
+            action: {
+              type: "string",
+              enum: ["status", "history", "list_files", "commit_info", "blame", "check_ancestor"],
+              description: "L'operazione di lettura: 'status', 'history', 'list_files', 'commit_info', 'blame', 'check_ancestor'."
+            },
             project_path: { type: "string" },
+            file_path: { type: "string" },
             max_count: { type: "number" },
-            file_path: { type: "string" },
-            search_text: { type: "string", description: "Ricerca nel messaggio di commit (--grep)." },
-            search_code: { type: "string", description: "Ricerca all'interno dei file modificati (usa git log -G o -S)." },
-            commit_range: { type: "string", description: "Range di commit opzionale (es. 'origin/main..HEAD')." }
-          },
-          required: ["project_path"]
-        },
-      },
-      {
-        name: "git_blame",
-        description: "Authorship riga per riga.",
-        inputSchema: {
-          type: "object", properties: { project_path: { type: "string" }, file_path: { type: "string" }, start_line: { type: "number" }, end_line: { type: "number" } }, required: ["project_path", "file_path"]
-        },
-      },
-
-
-      // --- TOOL DI LETTURA/ANALISI ---
-      {
-        name: "git_diff_compare",
-        description: "Compara due branch (o commit) usando 'git diff target...source' (triple dot). Ideale per Code Review di feature branch rispetto a dev/main.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            source: { type: "string", description: "Il branch/commit con le novità (es. feature-branch). Default: HEAD" },
-            target: { type: "string", description: "Il branch/commit base (es. develops/main)." },
-            name_only: { type: "boolean", description: "Se true, elenca solo i nomi dei file cambiati." },
-            file_path: { type: "string", description: "Opzionale: limita il diff a un file specifico." }
-          },
-          required: ["project_path", "target"]
-        },
-      },
-
-      // --- TOOL GESTIONE CONFLITTI ---
-      {
-        name: "git_list_conflicts",
-        description: "Elenca i file in stato 'Unmerged' (conflitto).",
-        inputSchema: {
-          type: "object",
-          properties: { project_path: { type: "string" } },
-          required: ["project_path"],
-        },
-      },
-      {
-        name: "git_check_ancestor",
-        description: "Verifica se un commit è antenato di un altro (restituisce true/false). Utile per filtrare commit vecchi.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
+            search_text: { type: "string" },
+            search_code: { type: "string" },
+            commit_range: { type: "string" },
+            commit_ref: { type: "string" },
             ancestor_commit: { type: "string" },
-            descendant_commit: { type: "string" }
+            descendant_commit: { type: "string" },
+            start_line: { type: "number" },
+            end_line: { type: "number" }
           },
-          required: ["project_path", "ancestor_commit", "descendant_commit"]
+          required: ["action", "project_path"]
         }
       },
       {
-        name: "git_get_commit_info",
-        description: "Restituisce info strutturate (hash, message, author, date) su un commit/ref.",
+        name: "git_diff",
+        description: "Visualizza le differenze tra stati del repository.",
         inputSchema: {
           type: "object",
           properties: {
+            action: {
+              type: "string",
+              enum: ["working", "compare", "show"],
+              description: "Tipo di diff: 'working' (unstaged/cached), 'compare' (tra branch), 'show' (dettagli commit)."
+            },
             project_path: { type: "string" },
-            commit_ref: { type: "string", description: "Hash o ref (es. HEAD, REBASE_HEAD). Default: HEAD" }
+            target: { type: "string", description: "Branch base per compare." },
+            source: { type: "string", description: "Branch/Commit sorgente. Default HEAD." },
+            commit_hash: { type: "string" },
+            file_path: { type: "string" },
+            cached: { type: "boolean", description: "Per 'working': diff dello stage." },
+            name_only: { type: "boolean" }
           },
-          required: ["project_path"]
+          required: ["action", "project_path"]
         }
       },
       {
-        name: "git_analyze_conflict",
-        description: "Analizza un file in conflitto e restituisce i blocchi (HEAD, Incoming, Base) in formato JSON strutturato. Utile per evitare problemi di parsing dei marcatori.",
+        name: "git_conflict_manager",
+        description: "Gestisce il ciclo di vita dei conflitti di merge e operazioni di scrittura.",
         inputSchema: {
           type: "object",
           properties: {
-            project_path: { type: "string" },
-            file_path: { type: "string" }
-          },
-          required: ["project_path", "file_path"]
-        }
-      },
-      {
-        name: "git_read_file",
-        description: "Legge il contenuto RAW di un file (per vedere i marcatori <<<<<<<).",
-        inputSchema: {
-          type: "object",
-          properties: {
+            action: {
+              type: "string",
+              enum: ["list", "analyze", "read", "resolve", "stage", "rebase_step", "restore"],
+              description: "Azione: 'list', 'analyze', 'read', 'resolve', 'stage', 'rebase_step', 'restore'."
+            },
             project_path: { type: "string" },
             file_path: { type: "string" },
-            commit_hash: { type: "string", description: "Opzionale. Hash del commit da cui leggere (es. HEAD^). Se omesso, legge il working tree locale." }
+            commit_hash: { type: "string" },
+            resolved_content: { type: "string" },
+            rebase_action: { type: "string", enum: ["continue", "abort", "skip"] }
           },
-          required: ["project_path", "file_path"],
-        },
-      },
-      {
-        name: "git_resolve_file",
-        description: "Sovrascrive un file con il contenuto risolto. NON esegue git add (devi farlo dopo).",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            file_path: { type: "string" },
-            resolved_content: { type: "string", description: "Il codice finale pulito." }
-          },
-          required: ["project_path", "file_path", "resolved_content"],
-        },
-      },
-      {
-        name: "git_add",
-        description: "Esegue 'git add' su un file. Da usare DOPO aver risolto il conflitto e verificato.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            file_path: { type: "string", description: "Il file da aggiungere allo stage." }
-          },
-          required: ["project_path", "file_path"],
-        },
-      },
-      {
-        name: "git_rebase_action",
-        description: "Esegue azioni di rebase/merge: continue, abort o skip.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            action: { type: "string", enum: ["continue", "abort", "skip"] }
-          },
-          required: ["project_path", "action"],
-        },
-      },
-      {
-        name: "git_restore_file",
-        description: "Ripristina un file o più file allo stato di un commit specifico usando git checkout/restore.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            file_path: { type: "string" },
-            commit_hash: { type: "string", description: "Hash del commit (es. HEAD^, origin/main, o un hash)." }
-          },
-          required: ["project_path", "file_path", "commit_hash"],
-        },
-      },
-      {
-        name: "git_list_files",
-        description: "Elenca i file modificati in un commit, in un range di commit, o in un branch.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" },
-            revision: { type: "string", description: "Commit hash, branch name, o range (es. 'commit1..commit2'). Default: HEAD (ultimo commit)." }
-          },
-          required: ["project_path"]
+          required: ["action", "project_path"]
         }
       }
     ],
@@ -231,245 +110,130 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  const projectPath = args.project_path || args.repo_path;
+  const projectPath = args.project_path;
 
   try {
-    // 1. STATUS
-    if (name === "git_status") {
-      const output = await runGit("status -s", projectPath);
-      return { content: [{ type: "text", text: output || "Clean." }] };
-    }
-    // 2. DIFF
-    if (name === "git_diff_working") {
-      const flags = args.cached ? "--cached" : "";
-      const output = await runGit(`diff ${flags}`, projectPath);
-      return { content: [{ type: "text", text: output || "No diff." }] };
-    }
-    // 3. SHOW
-    if (name === "git_show_commit") {
-      const fileFilter = args.file_path ? ` -- "${args.file_path}"` : "";
-      const output = await runGit(`show ${args.commit_hash}${fileFilter}`, projectPath);
-      return { content: [{ type: "text", text: output }] };
-    }
-    // 4. HISTORY
-    if (name === "git_history") {
-      let limitFlag = args.max_count ? ` -n ${args.max_count}` : (!args.commit_range && !args.file_path && !args.search_text ? " -n 20" : "");
+    if (name === "git_query") {
+      switch (args.action) {
+        case "status":
+          const statusOut = await runGit("status -s", projectPath);
+          return { content: [{ type: "text", text: statusOut || "Clean." }] };
 
-      const target = args.file_path ? ` -- "${args.file_path}"` : "";
+        case "history":
+          let limitFlag = args.max_count ? ` -n ${args.max_count}` : (!args.commit_range && !args.file_path && !args.search_text ? " -n 20" : "");
+          const target = args.file_path ? ` -- "${args.file_path}"` : "";
+          let searchParam = args.search_text ? ` --grep="${args.search_text.replace(/"/g, '\\"')}" -i` : "";
+          if (args.search_code) searchParam += ` -G"${args.search_code.replace(/"/g, '\\"')}"`;
+          const revRange = args.commit_range ? ` ${args.commit_range}` : "";
+          const format = `--pretty=format:"%h|%an|%ad|%s" --date=short`;
+          const histOut = await runGit(`log${limitFlag}${searchParam} ${format}${revRange}${target}`, projectPath);
+          const commits = histOut.split('\n').filter(l => l.trim()).map(l => {
+            const p = l.split('|'); return { hash: p[0], author: p[1], date: p[2], message: p.slice(3).join('|') };
+          });
+          return { content: [{ type: "text", text: JSON.stringify(commits, null, 2) }] };
 
-      let searchParam = args.search_text ? ` --grep="${args.search_text.replace(/"/g, '\\"')}" -i` : "";
-      if (args.search_code) {
-        searchParam += ` -G"${args.search_code.replace(/"/g, '\\"')}"`;
-      }
+        case "list_files":
+          const rev = args.commit_ref || "HEAD";
+          const filesOut = await runGit(`diff-tree --no-commit-id --name-only -r ${rev}`, projectPath);
+          return { content: [{ type: "text", text: filesOut || "Nessun cambiamento rilevato." }] };
 
-      const revRange = args.commit_range ? ` ${args.commit_range}` : "";
+        case "commit_info":
+          const infoRef = args.commit_ref || "HEAD";
+          const infoOut = await runGit(`log -1 --format="%H^|^%h^|^%an^|^%ad^|^%s" --date=short ${infoRef}`, projectPath);
+          const parts = infoOut.split('^|^');
+          return { content: [{ type: "text", text: JSON.stringify({ hash: parts[0], short_hash: parts[1], author: parts[2], date: parts[3], message: parts.slice(4).join('^|^') }, null, 2) }] };
 
-      const format = `--pretty=format:"%h|%an|%ad|%s" --date=short`;
+        case "blame":
+          if (!args.file_path) throw new Error("file_path obbligatorio per blame.");
+          let r = args.start_line ? `-L ${args.start_line},${args.end_line || args.start_line + 20}` : "";
+          const blameOut = await runGit(`blame ${r} -e -n -w -- "${args.file_path}"`, projectPath);
+          return { content: [{ type: "text", text: blameOut }] };
 
-      // Ordine: log FLAGS REV_RANGE FORMAT -- PATH
-      const rawOutput = await runGit(`log${limitFlag}${searchParam} ${format}${revRange}${target}`, projectPath);
-
-      const commits = rawOutput.split('\n').filter(l => l.trim()).map(l => {
-        const p = l.split('|'); return { hash: p[0], author: p[1], date: p[2], message: p.slice(3).join('|') };
-      });
-      return { content: [{ type: "text", text: JSON.stringify(commits, null, 2) }] };
-    }
-    // 5. BLAME
-    if (name === "git_blame") {
-      let r = args.start_line ? `-L ${args.start_line},${args.end_line || args.start_line + 20}` : "";
-      const output = await runGit(`blame ${r} -e -n -w -- "${args.file_path}"`, projectPath);
-      return { content: [{ type: "text", text: output }] };
-    }
-
-
-    // 5b. DIFF COMPARE (SMART REVIEW)
-    if (name === "git_diff_compare") {
-      const source = args.source || "HEAD";
-      const target = args.target;
-      const nameOnly = args.name_only ? "--name-only" : "";
-      const fileFilter = args.file_path ? ` -- "${args.file_path}"` : "";
-
-      // Usa triple dot (...) per vedere i cambiamenti dal common ancestor
-      // E' lo standard per le Code Review (es. GitHub PR)
-      const output = await runGit(`diff ${nameOnly} ${target}...${source}${fileFilter}`, projectPath);
-
-      return {
-        content: [{
-          type: "text",
-          text: output || `Nessuna differenza trovata tra ${target} e ${source}.`
-        }]
-      };
-    }
-
-    // --- NUOVI TOOL CONFLITTI (SEPARATI) ---
-
-    // 6. LIST CONFLICTS
-    if (name === "git_list_conflicts") {
-      const output = await runGit("diff --name-only --diff-filter=U", projectPath);
-      if (!output) return { content: [{ type: "text", text: "Nessun conflitto rilevato (Working tree clean from Unmerged)." }] };
-      return { content: [{ type: "text", text: "File in conflitto:\n" + output }] };
-    }
-
-    // 7. READ FILE
-    if (name === "git_read_file") {
-      if (args.commit_hash) {
-        // Formatta il PATH in stile Unix dato che git show si aspetta '/'
-        const filePathPosix = args.file_path.replace(/\\/g, '/');
-        const output = await runGit(`show ${args.commit_hash}:"${filePathPosix}"`, projectPath);
-        return { content: [{ type: "text", text: output }] };
-      } else {
-        const fullPath = path.join(projectPath, args.file_path);
-        if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
-        const content = fs.readFileSync(fullPath, 'utf8');
-        return { content: [{ type: "text", text: content }] };
+        case "check_ancestor":
+          try {
+            await execAsync(`git merge-base --is-ancestor ${args.ancestor_commit} ${args.descendant_commit}`, { cwd: projectPath });
+            return { content: [{ type: "text", text: "true" }] };
+          } catch (e) {
+            if (e.code === 1) return { content: [{ type: "text", text: "false" }] };
+            throw e;
+          }
+        default: throw new Error(`Azione non valida per git_query: ${args.action}`);
       }
     }
 
-    // 11. ANALYZE CONFLICT
-    if (name === "git_analyze_conflict") {
-      const fullPath = path.join(projectPath, args.file_path);
-      if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
+    if (name === "git_diff") {
+      switch (args.action) {
+        case "working":
+          const flags = args.cached ? "--cached" : "";
+          const workOut = await runGit(`diff ${flags}`, projectPath);
+          return { content: [{ type: "text", text: workOut || "No diff." }] };
 
-      // Leggi come buffer per gestire meglio eventuali caratteri strani all'inizio (BOM)
-      const buffer = fs.readFileSync(fullPath);
-      let content = buffer.toString('utf8');
+        case "compare":
+          const src = args.source || "HEAD";
+          const tgt = args.target;
+          if (!tgt) throw new Error("target obbligatorio per compare.");
+          const nameOnly = args.name_only ? "--name-only" : "";
+          const compFilter = args.file_path ? ` -- "${args.file_path}"` : "";
+          const compOut = await runGit(`diff ${nameOnly} ${tgt}...${src}${compFilter}`, projectPath);
+          return { content: [{ type: "text", text: compOut || `Nessuna differenza.` }] };
 
-      // Rimuovi BOM se presente
-      if (content.charCodeAt(0) === 0xFEFF) {
-        content = content.slice(1);
-      }
+        case "show":
+          const hash = args.commit_hash || "HEAD";
+          const showFilter = args.file_path ? ` -- "${args.file_path}"` : "";
+          const showOut = await runGit(`show ${hash}${showFilter}`, projectPath);
+          return { content: [{ type: "text", text: showOut }] };
 
-      const lines = content.split(/\r?\n/);
-      const conflicts = [];
-      let currentConflict = null;
-      let insideBlock = null; // 'head', 'base', 'incoming'
-
-      lines.forEach((line, index) => {
-        const lineNum = index + 1;
-
-        if (line.startsWith('<<<<<<<')) {
-          if (currentConflict) {
-            // Errore: nested conflict o precedente non chiuso?
-            conflicts.push({ ...currentConflict, error: "Unclosed block before new start" });
-          }
-          currentConflict = {
-            start_line: lineNum,
-            head_header: line,
-            head_content: [],
-            base_content: [],
-            incoming_content: [],
-            incoming_header: null,
-            end_line: null
-          };
-          insideBlock = 'head';
-        } else if (line.startsWith('|||||||')) {
-          if (currentConflict) {
-            insideBlock = 'base';
-          }
-        } else if (line.startsWith('=======')) {
-          if (currentConflict) {
-            insideBlock = 'incoming';
-          }
-        } else if (line.startsWith('>>>>>>>')) {
-          if (currentConflict) {
-            currentConflict.end_line = lineNum;
-            currentConflict.incoming_header = line;
-
-            // Unisci le righe
-            currentConflict.head_content = currentConflict.head_content.join('\n');
-            currentConflict.base_content = currentConflict.base_content.join('\n');
-            currentConflict.incoming_content = currentConflict.incoming_content.join('\n');
-
-            conflicts.push(currentConflict);
-            currentConflict = null;
-            insideBlock = null;
-          }
-        } else {
-          if (currentConflict && insideBlock) {
-            if (insideBlock === 'head') currentConflict.head_content.push(line);
-            else if (insideBlock === 'base') currentConflict.base_content.push(line);
-            else if (insideBlock === 'incoming') currentConflict.incoming_content.push(line);
-          }
-        }
-      });
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            file_path: args.file_path,
-            conflict_count: conflicts.length,
-            conflicts: conflicts
-          }, null, 2)
-        }]
-      };
-    }
-
-    // 12. CHECK ANCESTOR
-    if (name === "git_check_ancestor") {
-      try {
-        await execAsync(`git merge-base --is-ancestor ${args.ancestor_commit} ${args.descendant_commit}`, { cwd: projectPath });
-        return { content: [{ type: "text", text: "true" }] };
-      } catch (error) {
-        if (error.code === 1) return { content: [{ type: "text", text: "false" }] };
-        throw new Error(`Git Error: ${error.message}`);
+        default: throw new Error(`Azione non valida per git_diff: ${args.action}`);
       }
     }
 
-    // 13. GET COMMIT INFO
-    if (name === "git_get_commit_info") {
-      const ref = args.commit_ref || "HEAD";
-      const output = await runGit(`log -1 --format="%H^|^%h^|^%an^|^%ad^|^%s" --date=short ${ref}`, projectPath);
-      const parts = output.split('^|^');
+    if (name === "git_conflict_manager") {
+      switch (args.action) {
+        case "list":
+          const confList = await runGit("diff --name-only --diff-filter=U", projectPath);
+          return { content: [{ type: "text", text: confList ? "File in conflitto:\n" + confList : "Nessun conflitto." }] };
 
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            hash: parts[0],
-            short_hash: parts[1],
-            author: parts[2],
-            date: parts[3],
-            message: parts.slice(4).join('^|^')
-          }, null, 2)
-        }]
-      };
-    }
+        case "analyze":
+          if (!args.file_path) throw new Error("file_path obbligatorio per analyze.");
+          return await analyzeConflict(projectPath, args.file_path);
 
-    // 8. RESOLVE (WRITE ONLY)
-    if (name === "git_resolve_file") {
-      const fullPath = path.join(projectPath, args.file_path);
-      fs.writeFileSync(fullPath, args.resolved_content, 'utf8');
-      return { content: [{ type: "text", text: `✅ File salvato: ${args.file_path}\nOra verifica con git_diff_working e poi usa git_add.` }] };
-    }
+        case "read":
+          if (!args.file_path) throw new Error("file_path obbligatorio per read.");
+          if (args.commit_hash) {
+            const posixPath = args.file_path.replace(/\\/g, '/');
+            const data = await runGit(`show ${args.commit_hash}:"${posixPath}"`, projectPath);
+            return { content: [{ type: "text", text: data }] };
+          } else {
+            const content = fs.readFileSync(path.join(projectPath, args.file_path), 'utf8');
+            return { content: [{ type: "text", text: content }] };
+          }
 
-    // 9. ADD (STAGE)
-    if (name === "git_add") {
-      await runGit(`add "${args.file_path}"`, projectPath);
-      return { content: [{ type: "text", text: `✅ File aggiunto allo stage: ${args.file_path}` }] };
-    }
+        case "resolve":
+          if (!args.file_path || args.resolved_content === undefined) throw new Error("file_path e resolved_content obbligatori.");
+          fs.writeFileSync(path.join(projectPath, args.file_path), args.resolved_content, 'utf8');
+          return { content: [{ type: "text", text: `✅ File salvato: ${args.file_path}` }] };
 
-    // 10. CONTINUE/ABORT
-    if (name === "git_rebase_action") {
-      let cmd = `rebase --${args.action}`;
-      if (fs.existsSync(path.join(projectPath, ".git", "MERGE_HEAD")) && args.action === "continue") {
-        cmd = "commit --no-edit";
+        case "stage":
+          if (!args.file_path) throw new Error("file_path obbligatorio per stage.");
+          await runGit(`add "${args.file_path}"`, projectPath);
+          return { content: [{ type: "text", text: `✅ File aggiunto allo stage: ${args.file_path}` }] };
+
+        case "rebase_step":
+          if (!args.rebase_action) throw new Error("rebase_action obbligatorio.");
+          let cmd = `rebase --${args.rebase_action}`;
+          if (fs.existsSync(path.join(projectPath, ".git", "MERGE_HEAD")) && args.rebase_action === "continue") {
+            cmd = "commit --no-edit";
+          }
+          const rbOut = await runGit(cmd, projectPath);
+          return { content: [{ type: "text", text: rbOut || `Azione ${args.rebase_action} completata.` }] };
+
+        case "restore":
+          if (!args.file_path || !args.commit_hash) throw new Error("file_path e commit_hash obbligatori.");
+          await runGit(`checkout ${args.commit_hash} -- "${args.file_path}"`, projectPath);
+          return { content: [{ type: "text", text: `✅ File ripristinato: ${args.file_path}` }] };
+
+        default: throw new Error(`Azione non valida per conflict_manager: ${args.action}`);
       }
-      const output = await runGit(cmd, projectPath);
-      return { content: [{ type: "text", text: output || `Azione ${args.action} completata.` }] };
-    }
-
-    // 14. RESTORE FILE
-    if (name === "git_restore_file") {
-      await runGit(`checkout ${args.commit_hash} -- "${args.file_path}"`, projectPath);
-      return { content: [{ type: "text", text: `✅ File ripristinato dal commit ${args.commit_hash}: ${args.file_path}` }] };
-    }
-
-    // 15. LIST FILES
-    if (name === "git_list_files") {
-      const rev = args.revision || "HEAD";
-      const output = await runGit(`diff-tree --no-commit-id --name-only -r ${rev}`, projectPath);
-      return { content: [{ type: "text", text: output || "Nessun cambiamento rilevato." }] };
     }
 
     throw new Error(`Tool sconosciuto: ${name}`);
@@ -477,6 +241,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return { content: [{ type: "text", text: `❌ Errore: ${error.message}` }], isError: true };
   }
 });
+
+async function analyzeConflict(projectPath, filePath) {
+  const fullPath = path.join(projectPath, filePath);
+  if (!fs.existsSync(fullPath)) throw new Error("File non trovato");
+  let content = fs.readFileSync(fullPath, 'utf8');
+  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+  const lines = content.split(/\r?\n/);
+  const conflicts = [];
+  let current = null;
+  let block = null;
+  lines.forEach((line, index) => {
+    const num = index + 1;
+    if (line.startsWith('<<<<<<<')) {
+      current = { start_line: num, head_header: line, head_content: [], base_content: [], incoming_content: [], incoming_header: null, end_line: null };
+      block = 'head';
+    } else if (line.startsWith('|||||||')) { if (current) block = 'base'; }
+    else if (line.startsWith('=======')) { if (current) block = 'incoming'; }
+    else if (line.startsWith('>>>>>>>')) {
+      if (current) {
+        current.end_line = num; current.incoming_header = line;
+        current.head_content = current.head_content.join('\n');
+        current.base_content = current.base_content.join('\n');
+        current.incoming_content = current.incoming_content.join('\n');
+        conflicts.push(current); current = null; block = null;
+      }
+    } else if (current && block) {
+      if (block === 'head') current.head_content.push(line);
+      else if (block === 'base') current.base_content.push(line);
+      else if (block === 'incoming') current.incoming_content.push(line);
+    }
+  });
+  return { content: [{ type: "text", text: JSON.stringify({ file_path: filePath, conflict_count: conflicts.length, conflicts: conflicts }, null, 2) }] };
+}
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

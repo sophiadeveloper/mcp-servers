@@ -146,39 +146,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "query_database",
-        description: "Esegue query SELECT e restituisce i dati reali.",
+        name: "sql_executor",
+        description: "Tool unificato per l'interazione con il database: esecuzione query, analisi del piano e ispezione schema.",
         inputSchema: {
           type: "object",
           properties: {
-            query: { type: "string", description: "Query SQL (SELECT)" },
-            project_path: { type: "string" }
+            action: {
+              type: "string",
+              enum: ["query", "explain", "schema"],
+              description: "L'azione da eseguire: 'query' per eseguire una SELECT, 'explain' per vedere il piano di esecuzione, 'schema' per vedere le colonne di una tabella."
+            },
+            query: { type: "string", description: "La query SQL da eseguire o analizzare (necessaria per 'query' ed 'explain')." },
+            tableName: { type: "string", description: "Nome della tabella di cui recuperare lo schema (necessario per 'schema')." },
+            project_path: { type: "string", description: "Percorso root del progetto per trovare le credenziali nel file .env." }
           },
-          required: ["query", "project_path"],
-        },
-      },
-      {
-        name: "explain_query",
-        description: "Restituisce il PIANO DI ESECUZIONE stimato (Execution Plan) senza eseguire la query. Usa questo tool per analizzare le performance.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "La query SQL da analizzare" },
-            project_path: { type: "string" }
-          },
-          required: ["query", "project_path"],
-        },
-      },
-      {
-        name: "get_table_schema",
-        description: "Restituisce le colonne di una tabella.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            tableName: { type: "string" },
-            project_path: { type: "string" }
-          },
-          required: ["tableName", "project_path"],
+          required: ["action", "project_path"],
         },
       }
     ],
@@ -187,6 +169,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  
+  if (name !== "sql_executor") {
+      throw new Error(`Tool non trovato: ${name}`);
+  }
+
   let conn;
   let driver;
   let sshClient;
@@ -200,68 +187,51 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (envConfig.SSH_HOST) {
       const sshSetup = await setupSshTunnel(envConfig);
       sshClient = sshSetup.sshClient;
-
-      // Per MySQL e Postgres possiamo usare lo stream direttamente se il driver lo supporta,
-      // oppure cambiare l'host in localhost e fargli usare un tunnel locale se lo creassimo con un listener.
-      // Più semplice per questi drivers: molti accettano un parametro 'stream' o 'socketPath'.
-      
-      // Se il driver supporta la connessione tramite stream (es. mysql2 e pg), lo usiamo.
-      // Altrimenti (mssql) dovremmo creare un local server (più complesso).
-      
-      // Limitiamo il supporto tunnel a MySQL e Postgres per ora se vogliamo usare lo stream, 
-      // oppure modifichiamo il driver per accettare 'stream'.
-      
       if (['mysql', 'postgres'].includes(envConfig.DB_TYPE.toLowerCase())) {
           const stream = await forwardPort(sshClient, dbConfig.host || envConfig.DB_SERVER, dbConfig.port || envConfig.DB_PORT);
           dbConfig.stream = stream;
       } else {
-          // Per MSSQL/Oracle che non supportano stream facilmente in questo modo, 
-          // avvisiamo che il tunnel non è ancora supportato per questo DB_TYPE o implementiamo un local listener.
-          // Per ora lanciamo errore per chiarezza.
           throw new Error(`Il tunnel SSH è attualmente supportato solo per MySQL e PostgreSQL.`);
       }
     }
 
     conn = await driver.connect(dbConfig);
 
-    // BLOCCO SICUREZZA COMUNE
-    // Sicurezza: si utilizza un allowlist per consentire solo query di sola lettura.
-    // Controlla la prima parola chiave SQL dopo aver rimosso i commenti iniziali.
-    // Consente SELECT e WITH (per le CTE: WITH ... AS (...) SELECT ...).
-    // Blocca batch multi-istruzione con punti e virgola non terminali (es. SELECT 1; DROP TABLE ...).
-    // Blocca varianti SELECT con effetti collaterali:
-    //   - MySQL:           SELECT ... INTO OUTFILE/DUMPFILE (scrittura su file)
-    //   - PostgreSQL/MSSQL: SELECT ... INTO tabella (crea una nuova tabella)
-    if (args.query && !isQueryReadOnly(args.query)) {
-      return { content: [{ type: "text", text: "🚫 BLOCKED: Solo SELECT consentite per sicurezza." }], isError: true };
+    // Azione: SCHEMA
+    if (args.action === "schema") {
+      if (!args.tableName) throw new Error("Parametro 'tableName' mancante per l'azione 'schema'.");
+      const result = await driver.getTableSchema(conn, args.tableName);
+      return { content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }] };
     }
 
-    if (name === "query_database") {
+    // Per query ed explain, validiamo la query
+    if (!args.query) throw new Error(`Parametro 'query' mancante per l'azione '${args.action}'.`);
+    
+    // BLOCCO SICUREZZA COMUNE (Solo SELECT/WITH consentite)
+    if (!isQueryReadOnly(args.query)) {
+      return { content: [{ type: "text", text: "🚫 BLOCKED: Solo SELECT/WITH consentite per sicurezza." }], isError: true };
+    }
+
+    if (args.action === "query") {
       const result = await driver.query(conn, args.query);
       return { content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }] };
     }
 
-    if (name === "explain_query") {
+    if (args.action === "explain") {
       const planText = await driver.explain(conn, args.query);
       if (!planText) {
         return {
           content: [{
             type: "text",
-            text: `⚠️ Piano non trovato.\n\n` +
-              `Per ottenere il piano, esegui prima la query con query_database, poi riprova.\n\n` +
-              `Nota: I piani vengono rimossi dalla cache dopo un certo periodo o sotto pressione di memoria.`
+            text: `⚠️ Piano non trovato per la query specifica.`
           }]
         };
       }
       return { content: [{ type: "text", text: planText }] };
     }
 
-    if (name === "get_table_schema") {
-      const result = await driver.getTableSchema(conn, args.tableName);
-      return { content: [{ type: "text", text: JSON.stringify(result.rows, null, 2) }] };
-    }
   } catch (err) {
-    return { content: [{ type: "text", text: `Errore SQL: ${err.message}` }], isError: true };
+    return { content: [{ type: "text", text: `Errore SQL (${args.action || 'connect'}): ${err.message}` }], isError: true };
   } finally {
     if (conn && driver) await driver.close(conn);
     // @ts-ignore

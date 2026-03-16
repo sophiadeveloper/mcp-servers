@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -43,57 +43,28 @@ function getTargetConfig(projectPath) {
   return config;
 }
 
-// --- DEFINIZIONE TOOL ---
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "cf_evaluate",
-        description: "Esegue codice CFML arbitrario nel contesto dell'applicazione corrente via Bridge.",
+        name: "cf_bridge",
+        description: "Tool unificato per interagire con il server ColdFusion: esecuzione codice, gestione log e ispezione datasource.",
         inputSchema: {
           type: "object",
           properties: {
-            expression: { type: "string", description: "Codice/Espressione CFML da valutare (es. 'application.name' o 'server.coldfusion.productversion')." },
-            project_path: { type: "string", description: "Percorso root del progetto (per trovare il bridge corretto)." }
+            action: {
+              type: "string",
+              enum: ["evaluate", "logs_list", "logs_read", "datasources"],
+              description: "L'operazione da eseguire: 'evaluate' per codice CFML, 'logs_list' per cercare i log, 'logs_read' per leggere un log, 'datasources' per i database."
+            },
+            expression: { type: "string", description: "Codice/Espressione CFML (necessario per 'evaluate')." },
+            searchString: { type: "string", description: "Filtro nome file log (opzionale per 'logs_list')." },
+            logName: { type: "string", description: "Nome file o path assoluto log (necessario per 'logs_read')." },
+            lines: { type: "number", description: "Numero righe da leggere (opzionale per 'logs_read', default 50)." },
+            customPath: { type: "string", description: "Path cartella log personalizzato (opzionale per 'logs_list')." },
+            project_path: { type: "string", description: "Percorso root del progetto." }
           },
-          required: ["expression", "project_path"],
-        },
-      },
-      {
-        name: "cf_list_logs",
-        description: "Cerca i file di log sul server ColdFusion. Supporta wildcard e path personalizzati.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            searchString: { type: "string", description: "Filtro nome file (es. 'exception' trova anche 'exception.1.log'). Vuoto = tutti." },
-            customPath: { type: "string", description: "Path assoluto cartella log opzionale (es. 'D:\\Logs'). Se vuoto usa default CF." },
-            project_path: { type: "string" }
-          },
-          required: ["project_path"],
-        },
-      },
-      {
-        name: "cf_read_log",
-        description: "Legge e parsa un file di log, restituendo dati strutturati (timestamp, severity, message).",
-        inputSchema: {
-          type: "object",
-          properties: {
-            logName: { type: "string", description: "Nome file (es. 'exception.log') o Path Assoluto completo." },
-            lines: { type: "number", description: "Numero righe da leggere (default 50)." },
-            project_path: { type: "string" }
-          },
-          required: ["logName", "project_path"],
-        },
-      },
-      {
-        name: "cf_get_datasources",
-        description: "Elenca i Datasource (DB) configurati nel server ColdFusion.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            project_path: { type: "string" }
-          },
-          required: ["project_path"],
+          required: ["action", "project_path"],
         },
       }
     ],
@@ -104,6 +75,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
+  if (name !== "cf_bridge") {
+    throw new Error(`Tool sconosciuto: ${name}`);
+  }
+
   // 1. Determina URL e Token in base al progetto
   const cfConfig = getTargetConfig(args.project_path);
 
@@ -113,36 +88,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     action: ""
   };
 
-  // 3. Mappa i Tool sulle Action del backend CFM
+  // 3. Mappa l'azione dell'MCP sulle Action del backend CFM
   try {
-    switch (name) {
-      case "cf_evaluate":
+    switch (args.action) {
+      case "evaluate":
+        if (!args.expression) throw new Error("Expression mancante per action 'evaluate'");
         payload.action = "evaluate_code";
         payload.expression = args.expression;
         break;
 
-      case "cf_list_logs":
+      case "logs_list":
         payload.action = "list_log_files";
         if (args.searchString) payload.searchString = args.searchString;
         if (args.customPath) payload.customPath = args.customPath;
         break;
 
-      case "cf_read_log":
+      case "logs_read":
+        if (!args.logName) throw new Error("logName mancante per action 'logs_read'");
         payload.action = "read_log";
         payload.logName = args.logName;
         payload.lines = args.lines || 50;
         break;
 
-      case "cf_get_datasources":
+      case "datasources":
         payload.action = "get_datasources";
         break;
 
       default:
-        throw new Error(`Tool sconosciuto: ${name}`);
+        throw new Error(`Azione sconosciuta: ${args.action}`);
     }
 
     // 4. Esegui richiesta HTTP al Bridge
-    // Timeout breve (10s) per non bloccare l'AI
     const response = await axios.post(cfConfig.url, payload, { timeout: 10000 });
     const data = response.data;
 
