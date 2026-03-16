@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -11,6 +11,37 @@ const server = new Server(
   { name: "mantis-node-tracker", version: "2.0.0" },
   { capabilities: { tools: {} } }
 );
+
+/**
+ * Alcune istanze Mantis (versioni datate o con plugin mal configurati) emettono
+ * notice/warning PHP PRIMA del corpo JSON, corrompendo la risposta.
+ * Questa funzione isola il JSON cercando il primo '{' o '[' nel body grezzo,
+ * poi lancia un errore HTTP semantico se lo status è >= 400.
+ */
+function parseResponse(status, rawText) {
+  // Trova il primo carattere JSON valido nel body
+  const jsonStart = rawText.search(/[\[{]/);
+  const cleanText = jsonStart >= 0 ? rawText.slice(jsonStart) : rawText;
+
+  let data;
+  try {
+    data = JSON.parse(cleanText);
+  } catch {
+    // Se anche dopo la pulizia il JSON non è valido, rimuovi i tag HTML e lancia
+    const plainText = rawText.replace(/<[^>]+>/g, '').trim();
+    throw new Error(`HTTP ${status} — Risposta non parsificabile: ${plainText.slice(0, 300)}`);
+  }
+
+  if (status >= 400) {
+    const apiMsg = data.message || data.error || JSON.stringify(data);
+    const err = new Error(`HTTP ${status}: ${apiMsg}`);
+    err.status = status;
+    err.data = data;
+    throw err;
+  }
+
+  return data;
+}
 
 function getMantisConfig(projectPath) {
   if (!projectPath) throw new Error("Percorso progetto mancante.");
@@ -89,21 +120,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const client = axios.create({
       baseURL: config.baseURL,
       headers: config.headers,
-      timeout: 10000
+      timeout: 10000,
+      // Riceviamo sempre il body come testo grezzo così possiamo pulirlo
+      // prima di parsare: gestisce i PHP notice/warning prepended al JSON.
+      responseType: 'text',
+      // Non lanciare eccezioni automatiche: gestiamo noi lo status HTTP.
+      validateStatus: () => true
     });
 
     // 1. INFO UTENTE
     if (name === "mantis_get_my_info") {
       const res = await client.get('/users/me');
-      return { content: [{ type: "text", text: JSON.stringify(res.data, null, 2) }] };
+      const data = parseResponse(res.status, res.data);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
     // 2. DETTAGLIO BUG
     if (name === "mantis_get_issue") {
       const res = await client.get(`/issues/${args.issue_id}`);
+      const data = parseResponse(res.status, res.data);
 
       // Estraiamo il primo elemento se è un array (comportamento standard API Mantis per ID singolo)
-      const rawIssue = res.data.issues ? res.data.issues[0] : res.data;
+      const rawIssue = data.issues ? data.issues[0] : data;
 
       // Formattiamo le note per renderle leggibili all'AI
       const formattedNotes = rawIssue.notes
@@ -128,18 +166,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // 3. AGGIUNGI NOTA
     if (name === "mantis_add_note") {
-      await client.post(`/issues/${args.issue_id}/notes`, {
+      const res = await client.post(`/issues/${args.issue_id}/notes`, {
         text: args.text,
         view_state: { name: "public" }
       });
+      // parseResponse valida lo status (lancia se >= 400) e scarta il noise PHP
+      parseResponse(res.status, res.data || '{}');
       return { content: [{ type: "text", text: `✅ Nota aggiunta con successo al ticket ${args.issue_id}` }] };
     }
 
     throw new Error(`Tool sconosciuto: ${name}`);
 
   } catch (error) {
-    const errorMsg = error.response
-      ? `API Error (${error.response.status}): ${JSON.stringify(error.response.data)}`
+    // error.status è impostato da parseResponse per gli errori HTTP semantici
+    const errorMsg = error.status
+      ? `API Error (${error.status}): ${JSON.stringify(error.data)}`
       : error.message;
 
     return {
