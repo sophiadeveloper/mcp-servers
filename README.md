@@ -305,13 +305,34 @@ Ecco come appare la configurazione per un ambiente Ubuntu.
   }
 }
 ```
-
 ### Note Specifiche
 *   **Permessi**: Assicurati che l'utente remoto abbia i permessi di lettura sulla cartella dei server e di esecuzione su Node.
 *   **NVM**: Se usi NVM, il percorso di Node cambia tra le versioni. È consigliabile usare il path assoluto restituito da `which node` per evitare problemi di avvio.
 
-## 6. Integrazione Skills e MCP negli IDE
+---
 
+## 5. Setup Rapido (Automazione)
+
+Per facilitare l'installazione delle dipendenze in tutti i moduli e la compilazione dei componenti necessari (come `linter-node`), sono disponibili due script di automazione nella root del progetto.
+
+Questi script scansionano ricorsivamente il workspace, eseguono `npm install` dove necessario e lanciano la build per i moduli TypeScript.
+
+### Windows (PowerShell)
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+### Linux / macOS (Bash)
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+*Nota: Questi script sono il modo più veloce per ripristinare il corretto funzionamento del workspace dopo un aggiornamento importante o una pulizia dei tracciamenti di Git.*
+
+---
+
+## 6. Integrazione Skills e MCP negli IDE
 Oltre alla configurazione tecnica dei server (Capitolo 1 e 2), è possibile "istruire" gli agenti AI all'interno dei vari IDE per utilizzare al meglio le procedure definite nella cartella `skills/`.
 
 ### A. VSCode (GitHub Copilot / Cline / Roo Code)
