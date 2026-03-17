@@ -9,7 +9,8 @@ for folder in $package_folders; do
     echo -e "\n\033[0;33mEntrando in: $folder\033[0m"
     cd "$folder" || continue
     
-    npm install
+    npm install --no-fund
+    npm audit fix
     
     if [[ "$folder" == *"linter-node"* ]]; then
         echo -e "\033[0;32mEseguendo build per linter-node...\033[0m"
