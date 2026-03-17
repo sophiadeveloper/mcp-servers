@@ -55,6 +55,9 @@ Poiché i server MCP operano su diversi repository locali, è fondamentale gesti
     - Bridge ColdFusion (.cfm, .cfc): **UTF-8 con BOM**.
 - **Logging**: Usa `console.log` solo per debug critici lato server. In produzione, rispondi con oggetti JSON strutturati.
 - **Error Handling**: Non far crashare il server MCP in caso di errore operativo (es. file non trovato). Restituisci un messaggio di errore chiaro all'agente con `isError: true`.
+- **Sincronizzazione Compilati (Build)**: 
+    - Per i progetti che utilizzano TypeScript (presenza di `tsconfig.json`), l'agente DEVE eseguire la build (es. `npx tsc`) dopo ogni modifica ai file nella cartella `src/`.
+    - È fondamentale assicurarsi che i file nella cartella `dist/` (o la destinazione specificata nel `main` del `package.json`) siano sincronizzati con il codice sorgente modificato, poiché il runtime dell'MCP punta tipicamente ai file compilati.
 
 ## 5. Sviluppo di Nuovi Server MCP
 

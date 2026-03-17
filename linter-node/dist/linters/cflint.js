@@ -33,7 +33,12 @@ export async function lintCFML(filePath, fix = false) {
         throw new Error(`CFLint JAR not found at: ${cflintJarPath}`);
     }
     const projectDir = path.dirname(absolutePath);
-    const configPath = findConfigFile(projectDir);
+    let configPath = findConfigFile(projectDir);
+    if (!configPath && config.cflint.defaultConfigPath) {
+        if (fs.existsSync(config.cflint.defaultConfigPath)) {
+            configPath = config.cflint.defaultConfigPath;
+        }
+    }
     const messages = [];
     let encodingModified = false;
     // --- CHECK FOR UTF-8 BOM (MANDATORY FOR CFML) ---
@@ -53,12 +58,12 @@ export async function lintCFML(filePath, fix = false) {
         }
     }
     // ----------------------------
-    let command = `"${javaPath}" -jar "${cflintJarPath}" -file "${absolutePath}" -q -json`;
+    let command = `"${javaPath}" -jar "${cflintJarPath}" -file "${absolutePath}" -json -stdout -q`;
     if (configPath) {
         command += ` -configfile "${configPath}"`;
     }
     try {
-        const { stdout, stderr } = await execAsync(command);
+        const { stdout } = await execAsync(command);
         // CFLint might output other text before JSON if there are errors or debug info
         // We need to find the JSON part. It usually starts with { and ends with }
         const jsonStart = stdout.indexOf('{');
@@ -80,7 +85,7 @@ export async function lintCFML(filePath, fix = false) {
                 }
             }
         }
-        else {
+        else if (stdout.trim().length > 0) {
             console.warn("CFLint output is not valid JSON:", stdout);
         }
         return {
@@ -91,7 +96,6 @@ export async function lintCFML(filePath, fix = false) {
         };
     }
     catch (error) {
-        console.error("Error executing CFLint:", error);
         // Even if CFLint fails, we might have encoding error to report
         if (messages.length > 0) {
             return {

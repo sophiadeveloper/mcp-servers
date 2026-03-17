@@ -44,6 +44,7 @@ export const config = {
             ? process.env.JAVA_BIN
             : (process.env.JAVA_HOME
                 ? path.join(process.env.JAVA_HOME, 'bin', 'java.exe')
-                : 'D:\\programmi\\ColdFusion2023\\jre\\bin\\java.exe')
+                : 'D:\\programmi\\ColdFusion2023\\jre\\bin\\java.exe'),
+        defaultConfigPath: process.env.CFLINT_CONFIG || null
     }
 };

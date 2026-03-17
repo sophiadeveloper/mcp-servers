@@ -1,0 +1,120 @@
+{
+  "version" : "1.5.0-SNAPSHOT",
+  "timestamp" : 1773741679,
+  "issues" : [ {
+    "severity" : "WARNING",
+    "id" : "COMPONENT_HINT_MISSING",
+    "message" : "COMPONENT_HINT_MISSING",
+    "category" : "CFLINT",
+    "abbrev" : "CH",
+    "locations" : [ {
+      "file" : "D:\\mcp-servers\\linter-node\\tmp_test.cfc",
+      "fileName" : "tmp_test.cfc",
+      "function" : "",
+      "offset" : 0,
+      "column" : 1,
+      "line" : 1,
+      "message" : "Component tmp_test is missing a hint.",
+      "variable" : "tmp_test",
+      "expression" : "component {\n  public void function test()     {\nx = 1;\n\n    }\n}"
+    } ]
+  }, {
+    "severity" : "INFO",
+    "id" : "COMPONENT_IS_TEMPORARY",
+    "message" : "COMPONENT_IS_TEMPORARY",
+    "category" : "CFLINT",
+    "abbrev" : "CI",
+    "locations" : [ {
+      "file" : "D:\\mcp-servers\\linter-node\\tmp_test.cfc",
+      "fileName" : "tmp_test.cfc",
+      "function" : "",
+      "offset" : 0,
+      "column" : 0,
+      "line" : 1,
+      "message" : "Component name tmp_test could be named better.",
+      "variable" : "",
+      "expression" : "component {\n  public void function test()     {\nx = 1;\n\n    }\n}"
+    } ]
+  }, {
+    "severity" : "INFO",
+    "id" : "FUNCTION_HINT_MISSING",
+    "message" : "FUNCTION_HINT_MISSING",
+    "category" : "CFLINT",
+    "abbrev" : "FH",
+    "locations" : [ {
+      "file" : "D:\\mcp-servers\\linter-node\\tmp_test.cfc",
+      "fileName" : "tmp_test.cfc",
+      "function" : "test",
+      "offset" : 28,
+      "column" : 16,
+      "line" : 2,
+      "message" : "Function test is missing a hint.",
+      "variable" : "test",
+      "expression" : "public void function test()   {\nx = 1;\n\n  }"
+    } ]
+  }, {
+    "severity" : "ERROR",
+    "id" : "MISSING_VAR",
+    "message" : "MISSING_VAR",
+    "category" : "CFLINT",
+    "abbrev" : "MV",
+    "locations" : [ {
+      "file" : "D:\\mcp-servers\\linter-node\\tmp_test.cfc",
+      "fileName" : "tmp_test.cfc",
+      "function" : "test",
+      "offset" : 54,
+      "column" : 9,
+      "line" : 3,
+      "message" : "Variable x is not declared with a var statement.",
+      "variable" : "x",
+      "expression" : "x"
+    } ]
+  }, {
+    "severity" : "INFO",
+    "id" : "VAR_TOO_SHORT",
+    "message" : "VAR_TOO_SHORT",
+    "category" : "CFLINT",
+    "abbrev" : "VT",
+    "locations" : [ {
+      "file" : "D:\\mcp-servers\\linter-node\\tmp_test.cfc",
+      "fileName" : "tmp_test.cfc",
+      "function" : "test",
+      "offset" : 54,
+      "column" : 8,
+      "line" : 3,
+      "message" : "Variable x should be longer than 3 characters.",
+      "variable" : "x",
+      "expression" : "x = 1"
+    } ]
+  } ],
+  "counts" : {
+    "totalFiles" : 1,
+    "totalLines" : 6,
+    "countByCode" : [ {
+      "code" : "COMPONENT_IS_TEMPORARY",
+      "count" : 1
+    }, {
+      "code" : "COMPONENT_HINT_MISSING",
+      "count" : 1
+    }, {
+      "code" : "FUNCTION_HINT_MISSING",
+      "count" : 1
+    }, {
+      "code" : "VAR_TOO_SHORT",
+      "count" : 1
+    }, {
+      "code" : "MISSING_VAR",
+      "count" : 1
+    } ],
+    "countBySeverity" : [ {
+      "severity" : "ERROR",
+      "count" : 1
+    }, {
+      "severity" : "WARNING",
+      "count" : 1
+    }, {
+      "severity" : "INFO",
+      "count" : 3
+    } ]
+  }
+}

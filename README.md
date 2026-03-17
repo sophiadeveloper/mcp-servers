@@ -140,7 +140,7 @@ Simile agli altri, punta all'index.js del progetto Mantis.
 *   **Command**: Usa `node` generico.
 *   **Args[0]**: Punta al loader `tsx` installato nei `node_modules` del progetto (in formato Windows con doppi backslash `\\`).
 *   **Args[1]**: Punta al file sorgente `src/index.ts`.
-*   **Env**: Definisce i percorsi per il JAR di CFLint e per l'eseguibile Java (JRE di ColdFusion).
+*   **Env**: Definisce i percorsi per il JAR di CFLint e per l'eseguibile Java. In alternativa al blocco `env` del JSON, puoi creare un file `.env` nella cartella `linter-node/` basandoti sul file `linter-node/.env.example`.
 
 ### F. Playwright MCP Server (`playwright-node`)
 
@@ -199,7 +199,29 @@ Prima che l'editor possa avviare il server, devi assicurarti che il server stess
     *   Solo se dovessi riscontrare errori di "modulo non trovato", apri un terminale nella cartella del server ed esegui `npm install`.
 3.  **Configurazione `.env`**:
     *   Molti server richiedono un file `.env` per funzionare (per password, token API, ecc.).
-    *   Crea un file `.env` nella cartella root del tuo workspace o affidati al blocco `env` del file `mcp_config.json`.
+    *   Copia il file `.env.example` presente nella root del workspace rinominandolo in `.env`.
+    *   Compila le variabili necessarie seguendo lo schema riportato di seguito.
+
+### Variabili d'Ambiente (.env)
+
+Il progetto utilizza un file `.env` centrale nella root per gestire le configurazioni sensibili e i percorsi locali. Di seguito il dettaglio delle variabili supportate:
+
+| Variabile | Descrizione | Note |
+|:---|:---|:---|
+| `DB_TYPE` | Tipo di database | `mssql`, `mysql`, `postgres`, `oracle` |
+| `DB_SERVER` | Host del database | IP o hostname |
+| `DB_INSTANCE` | Istanza (MSSQL) | Opzionale (es. `SQLEXPRESS`) |
+| `DB_PORT` | Porta del database | Default: `1433` (MSSQL), `3306` (MySQL) |
+| `DB_NAME` | Nome del database | |
+| `DB_USER` | Username DB | |
+| `DB_PASSWORD` | Password DB | |
+| `MANTIS_URL` | URL Mantis | URL completo dell'istanza Helpdesk |
+| `MANTIS_TOKEN` | Token API Mantis | Generabile dal profilo utente |
+| `MANTIS_PROJECT_ID`| ID Progetti Mantis | Singolo o lista separata da `;` |
+| `CFLINT_JAR` | Path JAR CFLint | Percorso assoluto al file `.jar` |
+| `JAVA_BIN` | Path java.exe | Percorso assoluto all'eseguibile Java |
+| `CFLINT_CONFIG` | Path .cflintrc | (Opzionale) File di regole globale (JSON) |
+
 4.  **Installazione Browser (Solo per `playwright-node`)**:
     *   Prima dei primissimo avvio, Playwright ha bisogno di scaricare i binari dei browser headless sul tuo sistema.
     *   Apri un terminale dentro la cartella `playwright-node` ed esegui `npx playwright install chromium`.
