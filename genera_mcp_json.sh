@@ -103,7 +103,7 @@ const servers = [
     { name: 'docs-mcp-server', dir: 'docs-node', args: ['index.js'] },
     // In Linux usiamo i due punti (:) per separare i percorsi della variabile PATH
     { name: 'git-mcp-server', dir: 'git-node', args: ['index.js'], env: { PATH: gitCmdPath + ':' + envPath } },
-    { name: 'linter-mcp-server', dir: 'linter-node', command: nodePath, args: [path.join(rootDir, 'linter-node', 'node_modules', 'tsx', 'dist', 'cli.mjs'), path.join(rootDir, 'linter-node', 'src', 'index.ts')], env: { CFLINT_JAR: cfLintPath, JAVA_BIN: javaPath } },
+    { name: 'linter-mcp-server', dir: 'linter-node', args: ['dist/index.js'] },
     { name: 'mantis-mcp-server', dir: 'mantis-node', args: ['index.js'] },
     { name: 'playwright-mcp-server', dir: 'playwright-node', args: ['index.js'], env: { ALLOWED_URLS: '*', BLOCK_MEDIA: 'false' } },
     { name: 'sql-mcp-server', dir: 'sql-node', args: ['index.js'] }

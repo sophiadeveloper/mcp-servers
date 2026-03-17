@@ -7,6 +7,14 @@ Write-Host "--- Aggiornamento npm all'ultima versione ---" -ForegroundColor Cyan
 npm install -g npm@latest
 npm -v
 
+Write-Host "--- Verifica file .env ---" -ForegroundColor Cyan
+$rootEnv = Join-Path $PSScriptRoot ".env"
+$rootEnvEx = Join-Path $PSScriptRoot ".env.example"
+if (-not (Test-Path $rootEnv) -and (Test-Path $rootEnvEx)) {
+    Write-Host "Creazione file .env da .env.example..." -ForegroundColor Yellow
+    Copy-Item $rootEnvEx $rootEnv
+}
+
 Write-Host "`n--- Inizio installazione dipendenze ---" -ForegroundColor Cyan
 
 foreach ($folder in $packageFolders) {
@@ -15,8 +23,11 @@ foreach ($folder in $packageFolders) {
     try {
         npm install --no-fund
         npm audit fix --no-fund
-        if ($folder -match "linter-node") {
-            Write-Host "Eseguendo build per linter-node..." -ForegroundColor Green
+        
+        # Esegui build se definito nel package.json
+        $packageJson = Get-Content "package.json" | ConvertFrom-Json
+        if ($packageJson.scripts.build) {
+            Write-Host "Eseguendo build per $($packageJson.name)..." -ForegroundColor Green
             npm run build
         }
     }

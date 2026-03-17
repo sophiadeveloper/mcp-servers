@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
 import { LintResult, LintMessage } from './types.js';
-import { config } from '../config.js';
+import { getConfig } from '../config.js';
 import { hasUtf8Bom, ensureEncoding } from './utils.js';
 
 const execAsync = promisify(exec);
@@ -49,15 +49,16 @@ interface CFLintOutput {
   counts: any;
 }
 
-export async function lintCFML(filePath: string, fix: boolean = false): Promise<LintResult> {
+export async function lintCFML(filePath: string, fix: boolean = false, projectPath?: string): Promise<LintResult> {
   const absolutePath = path.resolve(filePath);
 
   if (!fs.existsSync(absolutePath)) {
     throw new Error(`File not found: ${absolutePath}`);
   }
 
-  const javaPath = config.cflint.javaPath;
-  const cflintJarPath = config.cflint.jarPath;
+  const currentConfig = getConfig(projectPath);
+  const javaPath = currentConfig.cflint.javaPath;
+  const cflintJarPath = currentConfig.cflint.jarPath;
 
   if (!fs.existsSync(javaPath)) {
     throw new Error(`Java executable not found at: ${javaPath}`);
@@ -69,9 +70,9 @@ export async function lintCFML(filePath: string, fix: boolean = false): Promise<
   const projectDir = path.dirname(absolutePath);
   let configPath = findConfigFile(projectDir);
 
-  if (!configPath && config.cflint.defaultConfigPath) {
-    if (fs.existsSync(config.cflint.defaultConfigPath)) {
-      configPath = config.cflint.defaultConfigPath;
+  if (!configPath && currentConfig.cflint.defaultConfigPath) {
+    if (fs.existsSync(currentConfig.cflint.defaultConfigPath)) {
+      configPath = currentConfig.cflint.defaultConfigPath;
     }
   }
 

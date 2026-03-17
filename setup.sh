@@ -7,6 +7,12 @@ echo -e "\033[0;36m--- Aggiornamento npm all'ultima versione ---\033[0m"
 npm install -g npm@latest
 npm -v
 
+echo -e "\033[0;36m--- Verifica file .env ---\033[0m"
+if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+    echo -e "\033[0;33mCreazione file .env da .env.example...\033[0m"
+    cp .env.example .env
+fi
+
 echo -e "\n\033[0;36m--- Inizio installazione dipendenze ---\033[0m"
 
 for folder in $package_folders; do
@@ -16,9 +22,12 @@ for folder in $package_folders; do
     npm install --no-fund
     npm audit fix --no-fund
     
-    if [[ "$folder" == *"linter-node"* ]]; then
-        echo -e "\033[0;32mEseguendo build per linter-node...\033[0m"
-        npm run build
+    # Esegui build se definito nel package.json
+    if [ -f "package.json" ]; then
+        if grep -q "\"build\":" "package.json"; then
+            echo -e "\033[0;32mEseguendo build...\033[0m"
+            npm run build
+        fi
     fi
     
     cd - > /dev/null

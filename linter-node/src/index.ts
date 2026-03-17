@@ -21,6 +21,10 @@ const LINT_CODE_TOOL: Tool = {
         type: "string",
         description: "Absolute path to the file to lint",
       },
+      project_path: {
+        type: "string",
+        description: "Optional project root path to find .env or configuration files",
+      },
       fix: {
         type: "boolean",
         description: "Attempt to fix errors automatically. This includes fixing file encoding (e.g., adding UTF-8 BOM to CFML files or removing it from JS/SQL files) and other supportable lint fixes.",
@@ -70,6 +74,7 @@ async function main() {
 
     if (name === "lint_code") {
       const filePath = args?.file_path as string;
+      const projectPath = args?.project_path as string;
       const fix = args?.fix === true;
 
       if (!filePath) {
@@ -80,7 +85,7 @@ async function main() {
 
       try {
         if (ext === '.cfc' || ext === '.cfm') {
-          const result = await lintCFML(filePath, fix);
+          const result = await lintCFML(filePath, fix, projectPath);
           return {
             content: [
               {
@@ -90,7 +95,7 @@ async function main() {
             ],
           };
         } else if (ext === '.js' || ext === '.ts') {
-          const result = await lintJS(filePath, fix);
+          const result = await lintJS(filePath, fix, projectPath);
           return {
             content: [
               {
@@ -100,7 +105,7 @@ async function main() {
             ],
           };
         } else if (ext === '.sql') {
-          const result = await lintSQL(filePath, fix);
+          const result = await lintSQL(filePath, fix, projectPath);
           return {
             content: [
               {

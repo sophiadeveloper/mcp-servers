@@ -92,7 +92,7 @@ $servers = @(
     @{ name = "cf-mcp-server"; dir = "cf-node"; args = @("index.js") },
     @{ name = "docs-mcp-server"; dir = "docs-node"; args = @("index.js") },
     @{ name = "git-mcp-server"; dir = "git-node"; args = @("index.js"); env = @("PATH=$gitCmdPath;${env:PATH}") },
-    @{ name = "linter-mcp-server"; dir = "linter-node"; command = "$nodePath"; args = @("$rootDir\linter-node\node_modules\tsx\dist\cli.mjs", "$rootDir\linter-node\src\index.ts"); env = @("CFLINT_JAR=$cfLintPath", "JAVA_BIN=$javaPath") },
+    @{ name = "linter-mcp-server"; dir = "linter-node"; args = @("dist\index.js") },
     @{ name = "mantis-mcp-server"; dir = "mantis-node"; args = @("index.js") },
     @{ name = "playwright-mcp-server"; dir = "playwright-node"; args = @("index.js"); env = @("ALLOWED_URLS=*", "BLOCK_MEDIA=false") },
     @{ name = "sql-mcp-server"; dir = "sql-node"; args = @("index.js") }

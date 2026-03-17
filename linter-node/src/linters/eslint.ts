@@ -33,7 +33,7 @@ function hasLocalConfig(startPath: string): boolean {
   return false;
 }
 
-export async function lintJS(filePath: string, fix: boolean = false): Promise<LintResult> {
+export async function lintJS(filePath: string, fix: boolean = false, projectPath?: string): Promise<LintResult> {
   const absolutePath = path.resolve(filePath);
 
   if (!fs.existsSync(absolutePath)) {

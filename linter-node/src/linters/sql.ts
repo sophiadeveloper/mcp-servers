@@ -43,7 +43,7 @@ function loadConfig(filePath: string): SqlLintConfig {
   return DEFAULT_CONFIG;
 }
 
-export async function lintSQL(filePath: string, fix: boolean = false): Promise<LintResult> {
+export async function lintSQL(filePath: string, fix: boolean = false, projectPath?: string): Promise<LintResult> {
   const absolutePath = path.resolve(filePath);
 
   if (!fs.existsSync(absolutePath)) {
