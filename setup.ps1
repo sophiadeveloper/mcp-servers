@@ -10,7 +10,7 @@ foreach ($folder in $packageFolders) {
     Push-Location $folder
     try {
         npm install --no-fund
-        npm audit fix
+        npm audit fix --no-fund
         if ($folder -match "linter-node") {
             Write-Host "Eseguendo build per linter-node..." -ForegroundColor Green
             npm run build

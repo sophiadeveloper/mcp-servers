@@ -10,7 +10,7 @@ for folder in $package_folders; do
     cd "$folder" || continue
     
     npm install --no-fund
-    npm audit fix
+    npm audit fix --no-fund
     
     if [[ "$folder" == *"linter-node"* ]]; then
         echo -e "\033[0;32mEseguendo build per linter-node...\033[0m"
