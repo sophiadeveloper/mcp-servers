@@ -9,7 +9,7 @@ function loadEnv(envPath: string) {
   try {
     if (fs.existsSync(envPath)) {
       const content = fs.readFileSync(envPath, 'utf8');
-      content.split('\n').forEach(line => {
+      content.split(/\r?\n/).forEach(line => {
         const trimmed = line.trim();
         // Skip comments and empty lines
         if (trimmed && !trimmed.startsWith('#')) {
@@ -24,10 +24,8 @@ function loadEnv(envPath: string) {
               value = value.substring(1, value.length - 1);
             }
 
-            // Only set if not already set (preserve system env or previously loaded)
-            if (!process.env[key]) {
-              process.env[key] = value;
-            }
+            // Set environment variable (override existing)
+            process.env[key] = value;
           }
         }
       });
@@ -39,8 +37,10 @@ function loadEnv(envPath: string) {
 }
 
 // Load environment variables from .env file manually
-loadEnv(path.resolve(__dirname, '../.env'));
+// Priority: CWD > project > root
 loadEnv(path.resolve(__dirname, '../../.env'));
+loadEnv(path.resolve(__dirname, '../.env'));
+loadEnv(path.resolve(process.cwd(), '.env'));
 
 export const config = {
   cflint: {
