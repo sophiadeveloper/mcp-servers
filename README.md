@@ -121,14 +121,13 @@ Simile agli altri, punta all'index.js del progetto Mantis.
 
 ### E. Linter MCP Server (`linter-node`)
 
-**Nota Importante**: A differenza degli altri server, questo utilizza `tsx` per eseguire direttamente i file TypeScript (`src/index.ts`) e richiede la configurazione di variabili d'ambiente specifiche per ColdFusion.
+**Nota Importante**: Questo server è scritto in TypeScript. Per garantire stabilità e performance, deve essere eseguito puntando alla versione compilata nella cartella `dist/`.
 
 ```json
 "linter-node": {
-  "command": "node",
+  "command": "C:\\Program Files\\nodejs\\node.exe",
   "args": [
-    "D:\\mcp-servers\\linter-node\\node_modules\\tsx\\dist\\cli.mjs",
-    "D:\\mcp-servers\\linter-node\\src\\index.ts"
+    "D:\\mcp-servers\\linter-node\\dist\\index.js"
   ],
   "env": {
     "CFLINT_JAR": "C:\\tesisquare\\cflint\\CFLint-1.5.0-all.jar",
@@ -137,10 +136,10 @@ Simile agli altri, punta all'index.js del progetto Mantis.
 }
 ```
 
-*   **Command**: Usa `node` generico.
-*   **Args[0]**: Punta al loader `tsx` installato nei `node_modules` del progetto (in formato Windows con doppi backslash `\\`).
-*   **Args[1]**: Punta al file sorgente `src/index.ts`.
+*   **Command**: Percorso assoluto al tuo `node.exe`.
+*   **Args[0]**: Punta al file compilato `dist/index.js`.
 *   **Env**: Definisce i percorsi per il JAR di CFLint e per l'eseguibile Java. In alternativa al blocco `env` del JSON, puoi creare un file `.env` nella cartella `linter-node/` basandoti sul file `linter-node/.env.example`.
+*   **Build**: Se apporti modifiche al codice sorgente in `src/`, ricordati di eseguire `npm run build` nella cartella `linter-node` per aggiornare i file in `dist/`.
 
 ### F. Playwright MCP Server (`playwright-node`)
 
