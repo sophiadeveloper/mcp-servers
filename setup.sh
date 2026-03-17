@@ -3,7 +3,11 @@
 # Trova tutte le cartelle con package.json, escludendo i node_modules
 package_folders=$(find . -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;)
 
-echo -e "\033[0;36m--- Inizio installazione dipendenze ---\033[0m"
+echo -e "\033[0;36m--- Aggiornamento npm all'ultima versione ---\033[0m"
+npm install -g npm@latest
+npm -v
+
+echo -e "\n\033[0;36m--- Inizio installazione dipendenze ---\033[0m"
 
 for folder in $package_folders; do
     echo -e "\n\033[0;33mEntrando in: $folder\033[0m"

@@ -3,7 +3,11 @@ $packageFolders = Get-ChildItem -Recurse -Filter "package.json" |
                   Where-Object { $_.FullName -notmatch "node_modules" } | 
                   Select-Object -ExpandProperty DirectoryName
 
-Write-Host "--- Inizio installazione dipendenze ---" -ForegroundColor Cyan
+Write-Host "--- Aggiornamento npm all'ultima versione ---" -ForegroundColor Cyan
+npm install -g npm@latest
+npm -v
+
+Write-Host "`n--- Inizio installazione dipendenze ---" -ForegroundColor Cyan
 
 foreach ($folder in $packageFolders) {
     Write-Host "`nEntrando in: $folder" -ForegroundColor Yellow
