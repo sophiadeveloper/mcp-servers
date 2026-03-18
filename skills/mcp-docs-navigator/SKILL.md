@@ -5,13 +5,13 @@ description: Ricerca e gestione della documentazione di progetto tramite docs-no
 
 # MCP Docs Navigator
 
-Questo skill ottimizza l'accesso alla documentazione interna del progetto utilizzando `docs-node`.
+Questo skill ottimizza l'accesso alla documentazione interna del progetto utilizzando `docs-mcp-server`.
 
 ## Workflow Ottimizzato
 
-1.  **Indicizzazione**: Prima di cercare, assicurati che i file `.md` siano indicizzati. Usa `docs_management` con `action: "scan_folder"` o `scan_file`.
+1.  **Indicizzazione**: Prima di cercare, assicurati che i file `.md` siano indicizzati. Usa `mcp_docs-mcp-server_docs_management` con `action: "scan_folder"` o `scan_file`.
     *   Organizza la documentazione in "scaffali" (`shelf`) logici (es: "Business Logic", "Database", "API").
-2.  **Ricerca Full-Text**: Usa `docs_navigation` con `action: "search"` per trovare termini specifici.
+2.  **Ricerca Full-Text**: Usa `mcp_docs-mcp-server_docs_navigation` con `action: "search"` per trovare termini specifici.
 3.  **Lettura Mirata**: Usa `action: "read_document"` per leggere il contenuto. Se il documento è lungo, usa `search_string` per isolare solo i frammenti rilevanti.
 
 ## Sinergie e Best Practices

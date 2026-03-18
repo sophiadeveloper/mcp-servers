@@ -9,12 +9,13 @@ Questo skill unifica la gestione del codice e il tracking dei bug/task integrand
 
 ## Workflow Ottimizzato
 
-1.  **Analisi Contesto**: Prima di lavorare su un bug, usa `mantis_get_issue` per leggere la descrizione e le note del ticket.
+1.  **Analisi Contesto**: Prima di lavorare su un bug, usa `mantis_issue_reader` (azione: `get_one`) per leggere la descrizione, le note e le relazioni (ticket collegati) del ticket.
 2.  **Tracking Git**: Usa `git_query` per identificare file modificati e storia dei commit.
 3.  **Cross-Referencing**:
     *   Cerca l'ID dell'issue nei messaggi di commit (`git_query` con `search_text: "issue_id"`).
     *   Usa `git_diff` per vedere cosa è cambiato rispetto alla baseline del ticket.
-4.  **Aggiornamento Stato**: Dopo un commit importante, aggiungi una nota al ticket Mantis usando `mantis_add_note` includendo l'hash del commit.
+4.  **Gestione Allegati**: Usa `mantis_files` con l'azione `download` e il parametro opzionale `save_path` per evitare il Token Bloat scaricando i file su disco.
+5.  **Aggiornamento Stato**: Dopo un commit importante, aggiungi una nota al ticket Mantis usando `mantis_add_note` includendo l'hash del commit.
 
 ## Sinergie e Best Practices
 

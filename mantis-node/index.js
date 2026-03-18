@@ -55,6 +55,7 @@ function getMantisConfig(projectPath) {
 
   const url = envConfig.MANTIS_URL;
   const token = envConfig.MANTIS_TOKEN;
+  const projectIdStr = envConfig.MANTIS_PROJECT_ID || "";
 
   if (!url || !token) {
     throw new Error("Mancano MANTIS_URL o MANTIS_TOKEN nel file .env");
@@ -67,7 +68,8 @@ function getMantisConfig(projectPath) {
     headers: {
       "Authorization": token,
       "Content-Type": "application/json"
-    }
+    },
+    projectIds: projectIdStr ? projectIdStr.split(';') : []
   };
 }
 
@@ -84,28 +86,49 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: "mantis_get_issue",
-        description: "Ottiene i dettagli completi di un Bug/Issue dato il suo ID.",
+        name: "mantis_issue_reader",
+        description: "Legge o ricerca ticket su Mantis. Permette di ottenere un singolo ID o cercare una lista filtrata.",
         inputSchema: {
           type: "object",
           properties: {
             project_path: { type: "string" },
-            issue_id: { type: "number", description: "L'ID numerico del ticket (spesso trovato nei commit Git)." }
+            action: { type: "string", enum: ["get_one", "search"], description: "Ottieni dettaglio singolo o cerca lista." },
+            issue_id: { type: "number", description: "Necessario per 'get_one'." },
+            query: { type: "string", description: "Testo di ricerca per 'search'." },
+            status: { type: "string", description: "Filtra per stato (es. 'resolved', 'open')." },
+            limit: { type: "number", description: "Max risultati (default 10)." }
           },
-          required: ["project_path", "issue_id"],
+          required: ["project_path", "action"],
         },
       },
       {
         name: "mantis_add_note",
-        description: "Aggiunge un commento (Nota) a un ticket esistente.",
+        description: "Aggiunge una nota PRIVATA a un ticket esistente.",
         inputSchema: {
           type: "object",
           properties: {
             project_path: { type: "string" },
             issue_id: { type: "number" },
-            text: { type: "string", description: "Il testo del commento." }
+            text: { type: "string", description: "Il testo della nota." }
           },
           required: ["project_path", "issue_id", "text"],
+        },
+      },
+      {
+        name: "mantis_files",
+        description: "Gestisce gli allegati del ticket: upload (base64) o download.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project_path: { type: "string" },
+            action: { type: "string", enum: ["upload", "download"], description: "Azione: carica o leggi file." },
+            issue_id: { type: "number", description: "ID del ticket." },
+            file_id: { type: "number", description: "ID del file (necessario per 'download')." },
+            filename: { type: "string", description: "Nome file (necessario per 'upload')." },
+            content: { type: "string", description: "Contenuto in Base64 (necessario per 'upload')." },
+            save_path: { type: "string", description: "Percorso locale dove salvare il file scaricato (opzionale per 'download')." }
+          },
+          required: ["project_path", "action", "issue_id"],
         },
       }
     ],
@@ -121,10 +144,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       baseURL: config.baseURL,
       headers: config.headers,
       timeout: 10000,
-      // Riceviamo sempre il body come testo grezzo così possiamo pulirlo
-      // prima di parsare: gestisce i PHP notice/warning prepended al JSON.
       responseType: 'text',
-      // Non lanciare eccezioni automatiche: gestiamo noi lo status HTTP.
       validateStatus: () => true
     });
 
@@ -135,50 +155,120 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
-    // 2. DETTAGLIO BUG
-    if (name === "mantis_get_issue") {
-      const res = await client.get(`/issues/${args.issue_id}`);
-      const data = parseResponse(res.status, res.data);
+    // 2. ISSUE READER (GET / SEARCH)
+    if (name === "mantis_issue_reader") {
+      if (args.action === "get_one") {
+        if (!args.issue_id) throw new Error("Parametro issue_id mancante per action 'get_one'.");
+        const res = await client.get(`/issues/${args.issue_id}`);
+        const data = parseResponse(res.status, res.data);
+        const rawIssue = data.issues ? data.issues[0] : data;
 
-      // Estraiamo il primo elemento se è un array (comportamento standard API Mantis per ID singolo)
-      const rawIssue = data.issues ? data.issues[0] : data;
+        const formattedNotes = rawIssue.notes
+          ? rawIssue.notes.map(n => {
+              let noteText = `[${n.view_state.name}] ${n.reporter.name} @ ${n.created_at}: ${n.text}`;
+              if (n.attachments && n.attachments.length > 0) {
+                const attList = n.attachments.map(a => `ID: ${a.id} (${a.filename})`).join(", ");
+                noteText += `\n[Allegati nota: ${attList}]`;
+              }
+              return noteText;
+            }).join("\n---\n")
+          : "Nessuna nota.";
 
-      // Formattiamo le note per renderle leggibili all'AI
-      const formattedNotes = rawIssue.notes
-        ? rawIssue.notes.map(n => `[${n.reporter.name} @ ${n.created_at}]: ${n.text}`).join("\n---\n")
-        : "Nessuna nota.";
+        const formattedFiles = rawIssue.attachments
+          ? rawIssue.attachments.map(a => `ID: ${a.id} | ${a.filename} | ${a.size} bytes`).join("\n")
+          : "Nessun allegato.";
 
-      // Creiamo un oggetto pulito per risparmiare token e focus
-      const cleanIssue = {
-        id: rawIssue.id,
-        summary: rawIssue.summary,
-        description: rawIssue.description,
-        status: rawIssue.status.name,
-        project: rawIssue.project.name,
-        category: rawIssue.category ? rawIssue.category.name : "N/A",
-        handler: rawIssue.handler ? rawIssue.handler.name : "Unassigned",
-        updated_at: rawIssue.updated_at,
-        notes_history: formattedNotes
-      };
+        const cleanIssue = {
+          id: rawIssue.id,
+          summary: rawIssue.summary,
+          description: rawIssue.description,
+          status: rawIssue.status.label || rawIssue.status.name,
+          project: rawIssue.project.name,
+          category: rawIssue.category ? rawIssue.category.name : "N/A",
+          handler: rawIssue.handler ? rawIssue.handler.real_name : "Unassigned",
+          created_at: rawIssue.created_at,
+          updated_at: rawIssue.updated_at,
+          relationships: rawIssue.relationships || "Nessun ticket collegato.",
+          attachments: formattedFiles,
+          notes_history: formattedNotes
+        };
+        return { content: [{ type: "text", text: JSON.stringify(cleanIssue, null, 2) }] };
 
-      return { content: [{ type: "text", text: JSON.stringify(cleanIssue, null, 2) }] };
+      } else if (args.action === "search") {
+        // Costruzione URL ricerca con supporto multi-progetto
+        let url = `/issues?page_size=${args.limit || 10}`;
+        if (config.projectIds.length > 0) {
+          config.projectIds.forEach(id => { url += `&project_id[]=${id}`; });
+        }
+        if (args.query) url += `&search=${encodeURIComponent(args.query)}`;
+        // Nota: l'API REST Mantis filtra nativamente per lo stato se passato correttamente? 
+        // Solitamente lo 'status' è un filtro più complesso o non standard in GET /issues se non tramite parametri specifici.
+        // Se non supportato direttamente, restituiremo tutto e l'AI filtrerà.
+
+        const res = await client.get(url);
+        const data = parseResponse(res.status, res.data);
+        const issues = data.issues || [];
+
+        const results = issues.map(i => ({
+          id: i.id,
+          summary: i.summary,
+          status: i.status.label || i.status.name,
+          priority: i.priority.name,
+          handler: i.handler ? i.handler.name : "Unassigned",
+          updated_at: i.updated_at
+        }));
+
+        return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
+      }
     }
 
-    // 3. AGGIUNGI NOTA
+    // 3. AGGIUNGI NOTA (SEMPRE PRIVATA)
     if (name === "mantis_add_note") {
       const res = await client.post(`/issues/${args.issue_id}/notes`, {
         text: args.text,
-        view_state: { name: "public" }
+        view_state: { name: "private" }
       });
-      // parseResponse valida lo status (lancia se >= 400) e scarta il noise PHP
       parseResponse(res.status, res.data || '{}');
-      return { content: [{ type: "text", text: `✅ Nota aggiunta con successo al ticket ${args.issue_id}` }] };
+      return { content: [{ type: "text", text: `✅ Nota PRIVATA aggiunta con successo al ticket ${args.issue_id}` }] };
+    }
+
+    // 4. GESTIONE FILE (FILES)
+    if (name === "mantis_files") {
+      if (args.action === "upload") {
+        if (!args.filename || !args.content) throw new Error("Parametri filename e content (base64) obbligatori per upload.");
+        const res = await client.post(`/issues/${args.issue_id}/files`, {
+          files: [{ name: args.filename, content: args.content }]
+        });
+        parseResponse(res.status, res.data || '{}');
+        return { content: [{ type: "text", text: `✅ File '${args.filename}' caricato con successo sul ticket ${args.issue_id}` }] };
+
+      } else if (args.action === "download") {
+        if (!args.file_id) throw new Error("Parametro file_id obbligatorio per download.");
+        // GET /issues/{id}/files/{id} restituisce metadata + content (base64)
+        const res = await client.get(`/issues/${args.issue_id}/files/${args.file_id}`);
+        const data = parseResponse(res.status, res.data);
+        const fileData = data.files ? data.files[0] : data;
+        
+        if (args.save_path) {
+          const buffer = Buffer.from(fileData.content, 'base64');
+          fs.writeFileSync(args.save_path, buffer);
+          return { 
+            content: [{ type: "text", text: `✅ File '${fileData.filename}' salvato con successo in: ${args.save_path}` }] 
+          };
+        }
+
+        return { 
+          content: [
+            { type: "text", text: `File: ${fileData.filename} (${fileData.size} bytes)\nContent (Base64 ready)` },
+            { type: "text", text: JSON.stringify(fileData, null, 2) }
+          ] 
+        };
+      }
     }
 
     throw new Error(`Tool sconosciuto: ${name}`);
 
   } catch (error) {
-    // error.status è impostato da parseResponse per gli errori HTTP semantici
     const errorMsg = error.status
       ? `API Error (${error.status}): ${JSON.stringify(error.data)}`
       : error.message;

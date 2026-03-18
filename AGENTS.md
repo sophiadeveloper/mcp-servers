@@ -58,6 +58,7 @@ Poiché i server MCP operano su diversi repository locali, è fondamentale gesti
 - **Sincronizzazione Compilati (Build)**: 
     - Per i progetti che utilizzano TypeScript (presenza di `tsconfig.json`), l'agente DEVE eseguire la build (es. `npx tsc`) dopo ogni modifica ai file nella cartella `src/`.
     - È fondamentale assicurarsi che i file nella cartella `dist/` (o la destinazione specificata nel `main` del `package.json`) siano sincronizzati con il codice sorgente modificato, poiché il runtime dell'MCP punta tipicamente ai file compilati.
+- **Richiesta Riavvio**: Dopo ogni modifica al codice di un server MCP (Node, Java, ecc.), l'agente DEVE chiedere esplicitamente all'utente di riavviare il server per rendere effettive le modifiche e procedere con i test.
 
 ## 5. Sviluppo di Nuovi Server MCP
 
@@ -68,5 +69,18 @@ Se devi creare un nuovo server (es. `monitoring-node`):
 4.  Crea un file `.env.example` per documentare le variabili necessarie.
 5.  Aggiorna il `genera_mcp_json.ps1` (o .sh) per includere il nuovo server nella configurazione globale.
 
+## 6. Ottimizzazione delle Prestazioni e Gestione del Token Bloat
+
+Per mantenere le conversazioni fluide ed evitare di superare il limite di token del modello, è fondamentale gestire correttamente il trasferimento di grandi moli di dati (soprattutto binari).
+
+### Il Pattern "Server-Side Saving"
+NON restituire mai file binari (Base64) o testi estremamente lunghi direttamente nel `content` della risposta del tool se non strettamente necessario.
+
+1.  **Parametro `save_path`**: Ogni tool di download o export deve accettare un parametro opzionale `save_path`.
+2.  **Scrittura su Disco**: Se `save_path` è fornito, il server MCP deve scrivere il file direttamente sul filesystem locale.
+3.  **Risposta Leggera**: Invece del contenuto del file, il tool deve restituire un messaggio di conferma con il path del file salvato.
+
+*Esempio di vantaggio*: Un allegato da 100KB (Base64) occupa circa 130.000 token. Salvandolo su disco, il costo scende a zero token per l'agente.
+
 ---
-*Documento creato il 2026-03-16 per supportare l'evoluzione del framework MCP interno.*
+*Documento aggiornato il 2026-03-18 per includere la gestione del Token Bloat.*
