@@ -1,4 +1,4 @@
-﻿<cfsetting enablecfoutputonly="true" showdebugoutput="false">
+<cfsetting enablecfoutputonly="true" showdebugoutput="false">
 <cfcontent type="application/json" reset="true">
 
 <cfscript>
@@ -129,6 +129,15 @@
           // ... (altri case come evaluate_code e get_datasources rimangono uguali) ...
           case "evaluate_code":
                 if (NOT structKeyExists(data, "expression")) throw("Manca 'expression'");
+                
+                // Security Check: Block dangerous tags and functions (anti-abuse)
+                dangerousPatterns = ["cfhttp", "cfquery", "cfexecute", "cfregistry", "cffile", "cfdirectory", "cfmail", "createObject(", "invoke("];
+                for (pattern in dangerousPatterns) {
+                    if (FindNoCase(pattern, data.expression)) {
+                        throw(type="Security", message="Operazione non consentita", detail="L'uso di '#pattern#' non è permesso tramite mcp_cf_evaluate. Usalo solo per leggere o testare variabili locali pure.");
+                    }
+                }
+
                 savecontent variable="capturedOutput" {
                   evalResult = Evaluate(data.expression);
                   if (IsDefined("evalResult")) {

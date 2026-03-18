@@ -10,7 +10,7 @@ Questo skill ottimizza lo sviluppo su stack ColdFusion/CFML integrando `cf-node`
 ## Workflow Ottimizzato
 
 1.  **Analisi Statica**: Usa `lint_code` con `linter-node` su file `.cfm` o `.cfc` prima di ogni deployment o esecuzione. Questo rileva errori di tag non chiusi, variabili non definite o problemi di encoding (UTF-8 BOM).
-2.  **Debug in Tempo Reale**: Usa `mcp_cf-mcp-server_cf_bridge` con `action: "evaluate"` per testare piccoli snippet di codice o ispezionare variabili di sistema direttamente sul server.
+2.  **Debug in Tempo Reale**: Usa `mcp_cf-mcp-server_cf_bridge` con `action: "evaluate"` **SOLO** per leggere il valore di specifiche variabili locali o per testare minuscoli snippet di espressioni pure. **NON DEVE** essere mai utilizzato per eseguire operazioni fuori contesto come chiamate REST (`cfhttp`), query (`cfquery`), o manipolazione file (`cffile`). È un tool di sola ispezione e validazione logica passiva.
 3.  **Monitoraggio Log**:
     *   Usa `action: "logs_list"` per trovare i file di log rilevanti (es. `exception.log`, `application.log`).
     *   Usa `action: "logs_read"` per estrarre le ultime righe di un log dopo un errore.
