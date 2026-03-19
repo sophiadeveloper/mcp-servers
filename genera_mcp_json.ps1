@@ -94,6 +94,7 @@ $servers = @(
     @{ name = "git-mcp-server"; dir = "git-node"; args = @("index.js"); env = @("PATH=$gitCmdPath;${env:PATH}") },
     @{ name = "linter-mcp-server"; dir = "linter-node"; args = @("dist\index.js") },
     @{ name = "mantis-mcp-server"; dir = "mantis-node"; args = @("index.js") },
+    @{ name = "office-mcp-server"; dir = "office-node"; args = @("index.js") },
     @{ name = "playwright-mcp-server"; dir = "playwright-node"; args = @("index.js"); env = @("ALLOWED_URLS=*", "BLOCK_MEDIA=false") },
     @{ name = "sql-mcp-server"; dir = "sql-node"; args = @("index.js") }
 )

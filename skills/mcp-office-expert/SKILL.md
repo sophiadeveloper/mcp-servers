@@ -1,0 +1,74 @@
+---
+name: mcp-office-expert
+description: Legge, crea e modifica file Microsoft Office (Word .docx/.doc ed Excel .xlsx/.xls) tramite office-mcp-server. Utilizzare quando l'obiettivo riguarda l'analisi, la generazione o la modifica di documenti Word o fogli di calcolo Excel.
+---
+
+# MCP Office Expert
+
+Questo skill guida l'agente nell'utilizzo di `office-mcp-server` per operare su file Microsoft Office in modo preciso ed efficiente.
+
+## Tool Disponibili
+
+| Tool | Formati | Descrizione |
+| :--- | :--- | :--- |
+| `word_document` | `.docx`, `.doc` | Legge, crea e modifica documenti Word |
+| `excel_document` | `.xlsx`, `.xls` | Legge, scrive e crea file Excel |
+
+---
+
+## Workflow: Modifica Documento Word (.docx)
+
+Per modificare contenuto esistente, **non indovinare mai l'indice** — recuperalo sempre prima.
+
+1.  **Mappa il documento**: Usa `word_document` con `action: "list_paragraphs"` per ottenere l'elenco numerato di tutti i paragrafi.
+2.  **Individua il target**: Identifica l'indice `[N]` del paragrafo da modificare dall'output precedente.
+3.  **Applica la modifica**: Usa `word_document` con:
+    *   `action: "edit_paragraph"` + `paragraph_index: N` + `text: "..."` per sostituzione in-place.
+    *   `action: "insert_paragraph"` + `paragraph_index: N` + `text: "..."` per inserimento prima di N.
+    *   `action: "delete_paragraph"` + `paragraph_index: N` per rimozione.
+
+## Workflow: Lettura Documento Word
+
+*   `.docx` e `.doc`: Usa `action: "read"` — restituisce il testo grezzo dell'intero documento.
+*   Per file `.doc` la **sola azione supportata è `read`**. Per modifiche, chiedi all'utente di convertire in `.docx`.
+
+## Workflow: Creazione Documento Word (.docx)
+
+Usa `action: "create"` + `paragraphs: [...]`. Ogni elemento dell'array è un oggetto:
+```json
+{ "text": "Titolo del documento", "heading": "1" }
+{ "text": "Testo corpo normale" }
+{ "text": "Sottosezione", "heading": "2" }
+```
+Livelli `heading` supportati: `"1"` – `"6"`. Se omesso, il blocco è un paragrafo normale.
+
+---
+
+## Workflow: Lettura Foglio Excel (.xlsx / .xls)
+
+1.  **Scopri i fogli**: Usa `excel_document` con `action: "list_sheets"` per ottenere i nomi di tutti i fogli.
+2.  **Leggi i dati**: Usa `action: "read_sheet"` con:
+    *   `sheet_name`: nome del foglio (se omesso, usa il primo).
+    *   `range`: range opzionale in formato A1 (es. `"A1:F20"`). Se omesso, legge l'intero foglio.
+    *   Il risultato è un **array 2D** (righe × colonne) in JSON.
+
+## Workflow: Scrittura / Aggiornamento Excel
+
+*   **Aggiorna celle esistenti**: `action: "write_cells"` + `values: [[...], [...]]` + `start_cell: "A1"` (default).
+    *   I dati vengono scritti a partire dalla cella indicata, sovrascrivendo le celle occupate.
+    *   Il foglio e il file devono esistere già, oppure verranno creati automaticamente.
+*   **Crea nuovo file**: `action: "create"` + `sheets: [{ "name": "Foglio1", "values": [[...]] }]`.
+
+## Sinergie e Best Practices
+
+*   **Analisi documentale**: Combina `read` (word) con `mcp-docs-navigator` per indicizzare e cercare nei documenti estratti.
+*   **Report automatici**: Usa `excel_document` (`write_cells`) per produrre output tabulari di query SQL ottenuti da `mcp-database-expert`.
+*   **Verifica prima di scrivere**: Per Excel, leggi sempre il range target con `read_sheet` prima di sovrascrivere, per evitare perdita di dati.
+*   **Backup implicito**: Le modifiche a `.docx` e `.xlsx` sono in-place e **non reversibili** dal tool. Se il file è prezioso, suggerisci all'utente di fare una copia prima di procedere.
+
+## Risoluzione Problemi
+
+*   **"File non trovato"**: Verifica che `file_path` sia un percorso assoluto esistente.
+*   **"Indice fuori dai limiti"**: Riesegui `list_paragraphs` — la struttura del documento potrebbe essere cambiata dall'ultima lettura.
+*   **Caratteri speciali persi**: L'azione `edit_paragraph` rimuove la formattazione del run (grassetto, corsivo). Per documenti con formattazione complessa, preferisci `insert_paragraph` + `delete_paragraph` per preservare i run vicini.
+*   **File `.xls` in sola lettura**: Alcuni `.xls` molto vecchi (pre-Excel 97) potrebbero non essere scrivibili. Chiedi all'utente di salvare il file in `.xlsx` da Excel.

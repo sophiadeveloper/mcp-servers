@@ -1,0 +1,22 @@
+{
+  "name": "office-node",
+  "version": "1.1.0",
+  "description": "MCP server per la manipolazione di file Microsoft Office: Word (.docx, .doc) ed Excel (.xlsx, .xls)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@xmldom/xmldom": "^0.9.8",
+    "docx": "^9.5.1",
+    "mammoth": "^1.9.0",
+    "pizzip": "^3.1.7",
+    "word-extractor": "^1.0.4",
+    "xlsx": "^0.18.5"
+  }
+}

@@ -54,6 +54,8 @@ Ecco un modello generico da utilizzare. Sostituisci i percorsi con quelli del tu
 
 Di seguito sono riportati esempi di configurazione per i server presenti in questo workspace.
 
+> **Nota**: Il server **`@negokaz/excel-mcp-server`** (esterno) è stato sostituito da `office-mcp-server` (locale), che integra nativamente il supporto a Word (.docx, .doc) ed Excel (.xlsx, .xls).
+
 ### A. Git MCP Server (`git-node`)
 
 Questo server richiede l'accesso all'eseguibile `git`. È fondamentale configurare correttamente la variabile `PATH` se Git non è rilevato automaticamente.
@@ -183,6 +185,31 @@ Questo server indicizza file Markdown (`.md`) e cartelle in un database locale S
 *   `docs_search`: Esegue una query semantica sul database tramite BM25 (es. `query: "come fare il deploy", shelf: "Tesisquare PTE"`). Restituisce gli snippet e un `id` documento.
 *   `docs_read_document`: Consente all'AI di estrarre l'intero contenuto testuale markdown di un documento noto il suo ID (proveniente dai risultati di docs_search).
 *   `docs_create_shelf` e `docs_update_shelf`: Permettono di associare una `description` parlante allo scaffale in modo che in futuro, tramite list_shelves, si sappia in anticipo quale contesto stiamo interrogando.
+
+### H. Office MCP Server (`office-node`)
+
+Server locale Node.js per la manipolazione di file Microsoft Office. **Sostituisce il precedente `@negokaz/excel-mcp-server`** e non richiede Python o dipendenze esterne.
+
+```json
+"office-mcp-server": {
+  "command": "C:\\Program Files\\nodejs\\node.exe",
+  "args": [
+    "D:\\mcp-servers\\office-node\\index.js"
+  ]
+}
+```
+
+**Formati supportati:**
+
+| Formato | Operazioni disponibili |
+|:---|:---|
+| `.docx` | `read`, `list_paragraphs`, `create`, `edit_paragraph`, `insert_paragraph`, `delete_paragraph` |
+| `.doc` | `read` (sola lettura) |
+| `.xlsx` / `.xls` | `list_sheets`, `read_sheet`, `write_cells`, `create` |
+
+**Tool esposti:**
+*   `word_document`: Legge, crea e modifica file Word. Usa `list_paragraphs` per ottenere gli indici e poi `edit_paragraph` o `insert_paragraph` per modificare con precisione.
+*   `excel_document`: Legge e scrive file Excel. Usa `list_sheets` per scoprire i fogli, `read_sheet` con `range` opzionale (es. `"A1:D10"`) per leggere, `write_cells` con `values` (array 2D) per scrivere.
 
 ---
 

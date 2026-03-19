@@ -1,6 +1,6 @@
 ---
 name: mcp-master-orchestrator
-description: Coordina l'utilizzo di tutti gli MCP server (CF, SQL, Git, Mantis, Playwright, Docs) per task complessi. Utilizzare quando l'obiettivo richiede più fasi (es. fix bug -> test -> deploy -> doc).
+description: Coordina l'utilizzo di tutti gli MCP server (CF, SQL, Git, Mantis, Playwright, Docs, Office) per task complessi. Utilizzare quando l'obiettivo richiede più fasi (es. fix bug -> test -> deploy -> doc).
 ---
 
 # MCP Master Orchestrator
@@ -16,6 +16,7 @@ Questo skill guida l'agente nella scomposizione di un obiettivo complesso in sot
 | Modificare logica ColdFusion | `mcp-coldfusion-developer` | `cf-node`, `linter-node` |
 | Capire regole di business | `mcp-docs-navigator` | `docs-node` |
 | Testare l'UI o flussi utente | `mcp-browser-automation` | `playwright-node` |
+| Leggere/modificare file Word o Excel | `mcp-office-expert` | `office-node` |
 
 ## Workflow Multi-Fase Esempio: "Fix Regressione DB"
 
