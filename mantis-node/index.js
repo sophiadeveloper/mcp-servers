@@ -182,6 +182,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           id: rawIssue.id,
           summary: rawIssue.summary,
           description: rawIssue.description,
+          steps_to_reproduce: rawIssue.steps_to_reproduce || "Nessun passaggio fornito.",
+          additional_information: rawIssue.additional_information || "Nessuna informazione aggiuntiva.",
           status: rawIssue.status.label || rawIssue.status.name,
           project: rawIssue.project.name,
           category: rawIssue.category ? rawIssue.category.name : "N/A",
