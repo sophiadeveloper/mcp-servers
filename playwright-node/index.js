@@ -26,6 +26,7 @@ let browser = null;
 let context = null;
 let page = null;
 let pages = []; // Multi-tab tracking
+let activeFrame = null;
 
 // --- Idle Hibernation Timer ---
 let idleTimer = null;
@@ -51,6 +52,15 @@ let networkErrors = [];
 let consoleLogs = [];
 let lastDownloadBuffer = null;
 let lastDownloadFilename = null;
+let allowAllHosts = false;
+let allowedHosts = [];
+
+const DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1";
+const NAVIGATION_TIMEOUT_MS = Number(process.env.NAVIGATION_TIMEOUT_MS || 30000);
+const ACTION_TIMEOUT_MS = Number(process.env.ACTION_TIMEOUT_MS || 20000);
+const SETTLE_DELAY_MS = Number(process.env.SETTLE_DELAY_MS || 1200);
+const WAIT_FOR_LOAD_STATE = String(process.env.WAIT_FOR_LOAD_STATE || "domcontentloaded");
+const BLOCK_MEDIA = process.env.BLOCK_MEDIA === "true";
 
 function addNetworkError(error) {
   networkErrors.push(error);
@@ -60,6 +70,153 @@ function addNetworkError(error) {
 function addConsoleLog(log) {
   consoleLogs.push(log);
   if (consoleLogs.length > MAX_LOGS) consoleLogs.shift();
+}
+
+function loadAllowedHosts() {
+  const allowedUrlsStr = process.env.ALLOWED_URLS !== undefined
+    ? process.env.ALLOWED_URLS
+    : DEFAULT_ALLOWED_HOSTS;
+
+  allowAllHosts = allowedUrlsStr === "*";
+  allowedHosts = allowAllHosts
+    ? []
+    : allowedUrlsStr
+        .split(",")
+        .map(host => host.trim().toLowerCase())
+        .filter(Boolean);
+}
+
+function isHostnameAllowed(hostname) {
+  if (allowAllHosts) {
+    return true;
+  }
+
+  const normalizedHostname = String(hostname || "").toLowerCase();
+  return allowedHosts.some(allowedHost =>
+    normalizedHostname === allowedHost || normalizedHostname.endsWith(`.${allowedHost}`)
+  );
+}
+
+function assertUrlAllowed(url) {
+  if (allowAllHosts) {
+    return;
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch (error) {
+    throw new Error(`URL invalido o non consentito: ${error.message}`);
+  }
+
+  if (!isHostnameAllowed(parsedUrl.hostname)) {
+    throw new Error(
+      `Navigazione non consentita: host ${parsedUrl.hostname} non in ALLOWED_URLS (${allowedHosts.join(", ")})`
+    );
+  }
+}
+
+async function settlePage(activePage, options = {}) {
+  const {
+    waitForNavigation = false,
+    reason = "azione"
+  } = options;
+
+  if (!activePage) {
+    return;
+  }
+
+  if (waitForNavigation) {
+    try {
+      await activePage.waitForNavigation({
+        waitUntil: WAIT_FOR_LOAD_STATE,
+        timeout: NAVIGATION_TIMEOUT_MS
+      });
+      console.error(`[SETTLE] Navigation completed after ${reason}.`);
+    } catch (error) {
+      if (!/Timeout/i.test(error.message)) {
+        console.error(`[SETTLE] Navigation wait after ${reason} ended with: ${error.message}`);
+      } else {
+        console.error(`[SETTLE] No navigation detected after ${reason}; continuing with DOM settling.`);
+      }
+    }
+  }
+
+  try {
+    await activePage.waitForLoadState(WAIT_FOR_LOAD_STATE, { timeout: NAVIGATION_TIMEOUT_MS });
+  } catch (error) {
+    console.error(`[SETTLE] waitForLoadState(${WAIT_FOR_LOAD_STATE}) after ${reason} ended with: ${error.message}`);
+  }
+
+  try {
+    await activePage.waitForTimeout(SETTLE_DELAY_MS);
+  } catch (error) {
+    console.error(`[SETTLE] waitForTimeout after ${reason} ended with: ${error.message}`);
+  }
+}
+
+function getActiveTarget() {
+  return activeFrame || page;
+}
+
+function getFrameSummaries() {
+  if (!page) {
+    return [];
+  }
+
+  return page.frames().map((frame, index) => ({
+    index,
+    name: frame.name() || "",
+    url: frame.url(),
+    isMainFrame: frame === page.mainFrame(),
+    isActive: frame === getActiveTarget()
+  }));
+}
+
+async function waitForVisibleElement(selector, target = getActiveTarget()) {
+  await target.locator(selector).waitFor({
+    state: "visible",
+    timeout: ACTION_TIMEOUT_MS
+  });
+}
+
+async function removeAnnotations(target = getActiveTarget()) {
+  if (!target) {
+    return;
+  }
+
+  try {
+    await target.evaluate(() => {
+      document.querySelectorAll(".playwright-annotation").forEach(element => element.remove());
+    });
+  } catch (error) {
+    console.error(`[ANNOTATE] Failed to remove old annotations: ${error.message}`);
+  }
+}
+
+async function installContextRequestPolicy(browserContext) {
+  await browserContext.route("**/*", route => {
+    const request = route.request();
+    const requestUrl = request.url();
+    const resourceType = request.resourceType();
+
+    try {
+      const parsedUrl = new URL(requestUrl);
+      if (!isHostnameAllowed(parsedUrl.hostname)) {
+        addNetworkError(`[BLOCKED HOST] ${request.method()} ${requestUrl}`);
+        return route.abort("blockedbyclient");
+      }
+    } catch (error) {
+      addNetworkError(`[BLOCKED URL] ${request.method()} ${requestUrl} - ${error.message}`);
+      return route.abort("blockedbyclient");
+    }
+
+    if (BLOCK_MEDIA && ["image", "media", "font"].includes(resourceType)) {
+      return route.abort();
+    }
+
+    return route.continue();
+  });
 }
 
 /**
@@ -133,20 +290,12 @@ async function ensureBrowser(storageStatePath = undefined) {
     networkErrors = [];
     consoleLogs = [];
     pages = [];
+    activeFrame = null;
 
     const contextOptions = storageStatePath ? { storageState: storageStatePath } : {};
     context = await browser.newContext(contextOptions);
-
-    // Optional media blocking for Bandwidth/RAM saving
-    if (process.env.BLOCK_MEDIA === 'true') {
-      await context.route('**/*', route => {
-        const type = route.request().resourceType();
-        if (['image', 'media', 'font'].includes(type)) {
-          route.abort();
-        } else {
-          route.continue();
-        }
-      });
+    await installContextRequestPolicy(context);
+    if (BLOCK_MEDIA) {
       console.error("Media blocking is ENABLED via .env");
     }
 
@@ -169,6 +318,7 @@ async function ensureBrowser(storageStatePath = undefined) {
       pages.push(page);
       attachPageListeners(page);
     }
+    activeFrame = null;
 
     console.error("Browser context and page initialized successfully.");
   }
@@ -351,6 +501,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["index"],
         },
+      },
+      {
+        name: "browser_list_frames",
+        description: "Lists the frames available in the active page so a specific iframe can be selected.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "browser_select_frame",
+        description: "Selects a frame by index from browser_list_frames. Use index 0 for the main frame.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            index: { type: "number", description: "The frame index returned by browser_list_frames." },
+          },
+          required: ["index"],
+        },
       }
     ]
   };
@@ -369,24 +538,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "browser_navigate": {
         const url = String(args.url);
+        assertUrlAllowed(url);
 
-        // Allow URLs check
-        const allowedUrlsStr = process.env.ALLOWED_URLS !== undefined ? process.env.ALLOWED_URLS : "localhost,127.0.0.1";
-        if (allowedUrlsStr && allowedUrlsStr !== "*") {
-          const allowedUrls = allowedUrlsStr.split(",").map(s => s.trim());
-          try {
-            const targetUrlObj = new URL(url);
-            const isAllowed = allowedUrls.some(allowed => targetUrlObj.hostname === allowed || targetUrlObj.hostname.endsWith(`.${allowed}`));
-            if (!isAllowed) {
-              throw new Error(`Navigazione non consentita: host ${targetUrlObj.hostname} non in ALLOWED_URLS (${allowedUrls.join(", ")})`);
-            }
-          } catch (e) {
-            // URL parsing failed or denied
-            throw new Error(`URL invalido o non consentito: ${e.message}`);
-          }
-        }
-
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
+        activeFrame = null;
+        await removeAnnotations(page);
+        await page.goto(url, { waitUntil: WAIT_FOR_LOAD_STATE, timeout: NAVIGATION_TIMEOUT_MS });
+        await settlePage(page, { reason: "browser_navigate" });
         const title = await page.title();
         const currentUrl = page.url();
         return {
@@ -396,7 +553,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "browser_click": {
         const selector = String(args.selector);
-        await page.click(selector, { timeout: 10000 });
+        const target = getActiveTarget();
+        await removeAnnotations(target);
+        await waitForVisibleElement(selector, target);
+        await target.click(selector, { timeout: ACTION_TIMEOUT_MS });
+        await settlePage(target, { waitForNavigation: true, reason: `browser_click(${selector})` });
         return {
           content: [{ type: "text", text: `Click su selettore '${selector}' eseguito con successo.` }],
         };
@@ -405,7 +566,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "browser_fill": {
         const selector = String(args.selector);
         const value = String(args.value);
-        await page.fill(selector, value, { timeout: 10000 });
+        const target = getActiveTarget();
+        await removeAnnotations(target);
+        await waitForVisibleElement(selector, target);
+        await target.fill(selector, value, { timeout: ACTION_TIMEOUT_MS });
+        await settlePage(target, { reason: `browser_fill(${selector})` });
         return {
           content: [{ type: "text", text: `Testo inserito nel selettore '${selector}' con successo.` }],
         };
@@ -413,7 +578,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "browser_get_dom": {
         // Extracts a compact DOM structure
-        const compactDOM = await page.evaluate(() => {
+        const target = getActiveTarget();
+        const compactDOM = await target.evaluate(() => {
           function getCleanOutline(node) {
             // Skip invisible or irrelevant elements
             if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.TEXT_NODE) return null;
@@ -491,7 +657,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "browser_evaluate_js": {
         const code = String(args.code);
-        const result = await page.evaluate(code);
+        const target = getActiveTarget();
+        const result = await target.evaluate(code);
         const resultStr = typeof result === "object" ? JSON.stringify(result, null, 2) : String(result);
         return {
           content: [{ type: "text", text: `Execution result:\n${resultStr}` }],
@@ -499,13 +666,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "browser_annotate": {
-        await page.evaluate(() => {
+        const target = getActiveTarget();
+        await removeAnnotations(target);
+        await target.evaluate(() => {
           let elements = document.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"], [role="checkbox"], [role="menuitem"]');
           window.__elementMap = {};
           let counter = 1;
-
-          // Remove old annotations if any
-          document.querySelectorAll('.playwright-annotation').forEach(e => e.remove());
 
           elements.forEach(el => {
             const rect = el.getBoundingClientRect();
@@ -521,8 +687,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               label.style.left = `${rect.left + window.scrollX}px`;
               label.style.background = 'red';
               label.style.color = 'white';
-              label.style.padding = '2px 4px';
-              label.style.fontSize = '12px';
+              label.style.padding = '1px 4px';
+              label.style.fontSize = '11px';
               label.style.fontWeight = 'bold';
               label.style.zIndex = '999999';
               label.style.pointerEvents = 'none';
@@ -536,7 +702,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // Wait a tiny bit for rendering
         await new Promise(resolve => setTimeout(resolve, 100));
-        const buffer = await page.screenshot({ fullPage: true });
+        const buffer = await page.screenshot({ fullPage: false });
 
         return {
           content: [{
@@ -552,7 +718,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "browser_click_by_id": {
         const id = Number(args.id);
-        const result = await page.evaluate((selectorId) => {
+        const target = getActiveTarget();
+        const result = await target.evaluate((selectorId) => {
           if (window.__elementMap && window.__elementMap[selectorId]) {
             // Rimuoviamo prima le annotazioni che potrebbero bloccare il click se pointerEvents:none non funziona altrove o per pulizia
             document.querySelectorAll('.playwright-annotation').forEach(e => e.remove());
@@ -563,6 +730,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }, id);
 
         if (result) {
+          await settlePage(target, { waitForNavigation: true, reason: `browser_click_by_id(${id})` });
           return {
             content: [{ type: "text", text: `Elemento ${id} cliccato con successo.` }],
           };
@@ -590,7 +758,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "browser_scroll": {
         let pixels = args.pixels !== undefined ? Number(args.pixels) : 500;
-        await page.evaluate((px) => window.scrollBy(0, px), pixels);
+        const target = getActiveTarget();
+        await target.evaluate((px) => window.scrollBy(0, px), pixels);
         return {
           content: [{ type: "text", text: `Scrolled by ${pixels} pixels.` }],
         };
@@ -598,7 +767,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "browser_hover": {
         const selector = String(args.selector);
-        await page.hover(selector, { timeout: 5000 });
+        const target = getActiveTarget();
+        await waitForVisibleElement(selector, target);
+        await target.hover(selector, { timeout: ACTION_TIMEOUT_MS });
         return {
           content: [{ type: "text", text: `Hovered over element matching '${selector}'.` }],
         };
@@ -607,7 +778,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "browser_press_key": {
         const selector = String(args.selector);
         const key = String(args.key);
-        await page.press(selector, key, { timeout: 5000 });
+        const target = getActiveTarget();
+        await removeAnnotations(target);
+        await waitForVisibleElement(selector, target);
+        await target.press(selector, key, { timeout: ACTION_TIMEOUT_MS });
+        await settlePage(target, { waitForNavigation: true, reason: `browser_press_key(${selector}, ${key})` });
         return {
           content: [{ type: "text", text: `Pressed key '${key}' on element matching '${selector}'.` }],
         };
@@ -629,6 +804,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const index = Number(args.index);
         if (index >= 0 && index < pages.length) {
           page = pages[index];
+          activeFrame = null;
           await page.bringToFront();
           const title = await page.title();
           return {
@@ -640,6 +816,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
+      }
+
+      case "browser_list_frames": {
+        const frames = getFrameSummaries();
+        return {
+          content: [{
+            type: "text",
+            text: frames.length > 0
+              ? JSON.stringify(frames, null, 2)
+              : "No frames found in the active page."
+          }],
+        };
+      }
+
+      case "browser_select_frame": {
+        const index = Number(args.index);
+        const frames = page.frames();
+        if (index >= 0 && index < frames.length) {
+          activeFrame = frames[index];
+          await settlePage(activeFrame, { reason: `browser_select_frame(${index})` });
+          return {
+            content: [{
+              type: "text",
+              text: `Frame ${index} selected. URL: ${activeFrame.url()}${activeFrame === page.mainFrame() ? " | Main frame" : ""}`
+            }],
+          };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Invalid frame index ${index}. Use browser_list_frames to inspect available frames.`
+          }],
+          isError: true,
+        };
       }
 
       case "browser_read_downloaded_file": {
@@ -670,6 +881,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // --- Transport & Shutdown ---
+loadAllowedHosts();
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error("Playwright MCP Server running on stdio");
