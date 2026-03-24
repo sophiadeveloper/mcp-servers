@@ -21,7 +21,6 @@ Questo skill guida l'agente nell'utilizzo combinato di `sql-mcp-server` e `linte
 *   **Ispezione Preventiva**: Se non conosci la struttura della tabella, usa sempre `sql_executor` con `action: "schema"` prima di tentare una query.
 *   **Sicurezza**: Il server `sql-mcp-server` ha controlli integrati per query read-only. Se ricevi un errore di sicurezza, verifica che la query non contenga istruzioni di modifica o batch multipli.
 *   **Performance**: Per query pesanti, usa `action: "explain"` (se supportato dal driver) per analizzare il piano di esecuzione.
-*   **Integrazione ColdFusion**: Usa `mcp_cf-mcp-server_cf_bridge` con `action: "datasources"` per confermare quali database sono visibili al server applicativo prima di interrogarli direttamente via SQL.
 
 ## Risoluzione Problemi
 

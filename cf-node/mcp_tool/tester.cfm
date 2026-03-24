@@ -47,7 +47,6 @@
                     <option value="evaluate_code">Evaluate Code (Esegui CFML)</option>
                     <option value="list_log_files">List Log Files (Cerca File)</option>
                     <option value="read_log">Read Log (Leggi & Parsa)</option>
-                    <option value="get_datasources">Get Datasources (Lista DB)</option>
                 </select>
             </div>
         </div>

@@ -126,7 +126,7 @@
                 }
                 break;
 
-          // ... (altri case come evaluate_code e get_datasources rimangono uguali) ...
+          // --- AZIONE 3: ESEGUI ESPRESSIONE CFML SICURA ---
           case "evaluate_code":
                 if (NOT structKeyExists(data, "expression")) throw("Manca 'expression'");
                 
@@ -146,17 +146,6 @@
                   }
                 }
                 response["result"] = capturedOutput;
-                break;
-
-          case "get_datasources":
-                factory = CreateObject("java", "coldfusion.server.ServiceFactory");
-                dsService = factory.getDataSourceService();
-                rawDS = dsService.getDatasources();
-                dsList = {};
-                for (ds in rawDS) {
-                    dsList[ds] = rawDS[ds]["driver"];
-                }
-                response["datasources"] = dsList;
                 break;
 
             default:

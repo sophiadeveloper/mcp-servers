@@ -48,14 +48,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "cf_bridge",
-        description: "Tool unificato per interagire con il server ColdFusion: esecuzione codice, gestione log e ispezione datasource.",
+        description: "Tool unificato per interagire con il server ColdFusion: esecuzione codice e gestione log.",
         inputSchema: {
           type: "object",
           properties: {
             action: {
               type: "string",
-              enum: ["evaluate", "logs_list", "logs_read", "datasources"],
-              description: "L'operazione da eseguire: 'evaluate' per codice CFML, 'logs_list' per cercare i log, 'logs_read' per leggere un log, 'datasources' per i database."
+              enum: ["evaluate", "logs_list", "logs_read"],
+              description: "L'operazione da eseguire: 'evaluate' per codice CFML, 'logs_list' per cercare i log, 'logs_read' per leggere un log."
             },
             expression: { type: "string", description: "Codice/Espressione CFML (necessario per 'evaluate')." },
             searchString: { type: "string", description: "Filtro nome file log (opzionale per 'logs_list')." },
@@ -108,10 +108,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         payload.action = "read_log";
         payload.logName = args.logName;
         payload.lines = args.lines || 50;
-        break;
-
-      case "datasources":
-        payload.action = "get_datasources";
         break;
 
       default:

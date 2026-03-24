@@ -1,6 +1,6 @@
 ---
 name: mcp-coldfusion-developer
-description: Gestisce lo sviluppo e il debugging in ambiente ColdFusion utilizzando cf-node e linter-node. Utilizzare per valutare codice CFML, ispezionare log e datasource.
+description: Gestisce lo sviluppo e il debugging in ambiente ColdFusion utilizzando cf-node e linter-node. Utilizzare per valutare codice CFML e ispezionare i log.
 ---
 
 # MCP ColdFusion Developer
@@ -14,13 +14,11 @@ Questo skill ottimizza lo sviluppo su stack ColdFusion/CFML integrando `cf-node`
 3.  **Monitoraggio Log**:
     *   Usa `action: "logs_list"` per trovare i file di log rilevanti (es. `exception.log`, `application.log`).
     *   Usa `action: "logs_read"` per estrarre le ultime righe di un log dopo un errore.
-4.  **Database Bridge**: Usa `action: "datasources"` per listare i DSN configurati in ColdFusion Administrator e confrontarli con quelli disponibili in `sql-mcp-server`.
 
 ## Sinergie e Best Practices
 
 *   **Fix Automatico**: Se `lint_code` rileva problemi di encoding, usa il parametro `fix: true` per correggere automaticamente i file (es. aggiunta UTF-8 BOM necessaria per alcuni motori CFML).
 *   **Log + Git**: Quando trovi un errore nei log, usa `git_query` con `action: "blame"` sulle linee di codice sospette per capire quando e da chi è stata introdotta la regressione.
-*   **Datasource Sync**: Prima di eseguire query SQL dirette, verifica che il datasource sia "OK" tramite `cf_bridge` action `datasources`.
 
 ## Risoluzione Problemi
 
