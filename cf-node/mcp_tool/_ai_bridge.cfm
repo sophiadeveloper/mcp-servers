@@ -1,0 +1,1 @@
+<cfinclude template="/mcp_tool/mcp_agent.cfm">
