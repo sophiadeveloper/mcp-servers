@@ -4,7 +4,7 @@ $packageFolders = Get-ChildItem -Recurse -Filter "package.json" |
                   Select-Object -ExpandProperty DirectoryName
 
 Write-Host "--- Aggiornamento npm all'ultima versione ---" -ForegroundColor Cyan
-npm install -g npm@latest
+npm install -g npm@latest --no-fund
 npm -v
 
 Write-Host "--- Verifica file .env ---" -ForegroundColor Cyan

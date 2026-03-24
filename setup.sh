@@ -4,7 +4,7 @@
 package_folders=$(find . -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;)
 
 echo -e "\033[0;36m--- Aggiornamento npm all'ultima versione ---\033[0m"
-npm install -g npm@latest
+npm install -g npm@latest --no-fund
 npm -v
 
 echo -e "\033[0;36m--- Verifica file .env ---\033[0m"
