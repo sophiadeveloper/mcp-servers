@@ -121,6 +121,52 @@ Simile agli altri, punta all'index.js del progetto Mantis.
 }
 ```
 
+#### Deploy dei file ColdFusion (`cf-node/mcp_tool`)
+
+Per far funzionare il bridge ColdFusion non basta avviare `cf-node`: devi anche pubblicare i file `.cfm` presenti nella cartella `cf-node/mcp_tool`.
+
+1.  Copia questi file:
+    *   `D:\mcp-servers\cf-node\mcp_tool\mcp_agent.cfm`
+    *   `D:\mcp-servers\cf-node\mcp_tool\tester.cfm`
+2.  Copiali nella cartella web di ColdFusion dedicata al bridge, ad esempio:
+    *   `D:\programmi\ColdFusion2023\cfusion\wwwroot\mcp_tool\`
+
+#### Mapping in ColdFusion Administrator
+
+Configura un mapping in **ColdFusion Administrator**:
+
+1.  Apri **ColdFusion Administrator**.
+2.  Vai in **Mappings**.
+3.  Crea il mapping:
+    *   **Logical Path**: `/mcp_tool`
+    *   **Directory Path**: `D:\programmi\ColdFusion2023\cfusion\wwwroot\mcp_tool`
+4.  Salva il mapping.
+
+Con questa configurazione, il file `_ai_bridge.cfm` puo' usare:
+
+```cfml
+<cfinclude template="/mcp_tool/mcp_agent.cfm">
+```
+
+#### Dove copiare `_ai_bridge.cfm`
+
+Copia `_ai_bridge.cfm` nella cartella della procedura batch, ad esempio:
+
+*   `D:\tesiscm\mediolanum\client\procedure\batch\_ai_bridge.cfm`
+
+In questo modo la procedura puo' includere `_ai_bridge.cfm`, mentre `_ai_bridge.cfm` delega poi al mapping `/mcp_tool`.
+
+#### Configurazione `.env` del progetto
+
+Nel file `.env` del progetto target imposta l'URL reale del bridge pubblicato su ColdFusion. Con la struttura sopra il valore consigliato e':
+
+```env
+CF_BRIDGE_URL=http://localhost:8500/mcp_tool/mcp_agent.cfm
+CF_MCP_TOKEN=Secret_CF_MCP_2026
+```
+
+Se il tuo ColdFusion risponde su host, porta o virtual directory diverse, aggiorna `CF_BRIDGE_URL` di conseguenza.
+
 ### E. Linter MCP Server (`linter-node`)
 
 **Nota Importante**: Questo server è scritto in TypeScript. Per garantire stabilità e performance, deve essere eseguito puntando alla versione compilata nella cartella `dist/`.
