@@ -161,8 +161,7 @@ In questo modo la procedura puo' includere `_ai_bridge.cfm`, mentre `_ai_bridge.
 Nel file `.env` del progetto target imposta l'URL reale del bridge pubblicato su ColdFusion. Con la struttura sopra il valore consigliato e':
 
 ```env
-CF_BRIDGE_URL=http://localhost:8500/mcp_tool/mcp_agent.cfm
-CF_MCP_TOKEN=Secret_CF_MCP_2026
+CF_BRIDGE_URL=http://127.0.0.1:8501/tesiscm/mediolanum/client/procedure/batch/_ai_bridge.cfm
 ```
 
 Se il tuo ColdFusion risponde su host, porta o virtual directory diverse, aggiorna `CF_BRIDGE_URL` di conseguenza.
