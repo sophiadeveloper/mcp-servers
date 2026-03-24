@@ -5,7 +5,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import mammoth from "mammoth";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
-import ExcelJS from "exceljs";
 import PizZip from "pizzip";
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import WordExtractor from "word-extractor";
@@ -75,27 +74,13 @@ function resolveHeadingLevel(level) {
 }
 
 // ---------------------------------------------------------------------------
-// Excel helpers
+// Excel helpers (SheetJS)
 // ---------------------------------------------------------------------------
-function getExcelFormat(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext !== ".xlsx" && ext !== ".xls") {
-    throw new Error(`Formato Excel non supportato: ${ext || "(senza estensione)"}. Usa .xlsx o .xls.`);
-  }
-  return ext;
-}
-
-async function readModernWorkbook(filePath) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
-  return workbook;
-}
-
-function readLegacyWorkbook(filePath) {
+function readWorkbook(filePath) {
   return XLSX.readFile(filePath, { cellDates: true });
 }
 
-function resolveLegacySheet(workbook, sheetName) {
+function resolveSheet(workbook, sheetName) {
   const name = sheetName || workbook.SheetNames[0];
   const sheet = workbook.Sheets[name];
   if (!sheet) {
@@ -104,101 +89,6 @@ function resolveLegacySheet(workbook, sheetName) {
     );
   }
   return { sheet, name };
-}
-
-function columnLettersToNumber(letters) {
-  let result = 0;
-  for (const char of letters.toUpperCase()) {
-    result = result * 26 + (char.charCodeAt(0) - 64);
-  }
-  return result;
-}
-
-function parseCellAddress(address) {
-  const match = /^([A-Z]+)(\d+)$/i.exec(String(address || "").trim());
-  if (!match) {
-    throw new Error(`Riferimento cella non valido: ${address}`);
-  }
-  return {
-    row: Number.parseInt(match[2], 10),
-    col: columnLettersToNumber(match[1]),
-  };
-}
-
-function parseRangeAddress(range) {
-  if (!range) {
-    return null;
-  }
-  const normalized = String(range).trim();
-  const [startRaw, endRaw] = normalized.split(":");
-  const start = parseCellAddress(startRaw);
-  const end = parseCellAddress(endRaw || startRaw);
-  return {
-    startRow: Math.min(start.row, end.row),
-    endRow: Math.max(start.row, end.row),
-    startCol: Math.min(start.col, end.col),
-    endCol: Math.max(start.col, end.col),
-  };
-}
-
-function normalizeExcelValue(value) {
-  if (value === undefined || value === null) {
-    return "";
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(normalizeExcelValue);
-  }
-  if (typeof value === "object") {
-    if (Array.isArray(value.richText)) {
-      return value.richText.map((part) => part.text || "").join("");
-    }
-    if (Object.prototype.hasOwnProperty.call(value, "result")) {
-      return normalizeExcelValue(value.result);
-    }
-    if (Object.prototype.hasOwnProperty.call(value, "text")) {
-      return value.text;
-    }
-    if (Object.prototype.hasOwnProperty.call(value, "hyperlink")) {
-      return value.text || value.hyperlink;
-    }
-    return JSON.stringify(value);
-  }
-  return value;
-}
-
-function worksheetToArray(worksheet, range) {
-  const bounds = range || {
-    startRow: 1,
-    endRow: worksheet.rowCount || 0,
-    startCol: 1,
-    endCol: worksheet.columnCount || 0,
-  };
-
-  if (bounds.endRow < bounds.startRow || bounds.endCol < bounds.startCol) {
-    return [];
-  }
-
-  const data = [];
-  for (let rowIndex = bounds.startRow; rowIndex <= bounds.endRow; rowIndex += 1) {
-    const row = [];
-    for (let colIndex = bounds.startCol; colIndex <= bounds.endCol; colIndex += 1) {
-      row.push(normalizeExcelValue(worksheet.getCell(rowIndex, colIndex).value));
-    }
-    data.push(row);
-  }
-  return data;
-}
-
-function writeValuesToWorksheet(worksheet, startCell, values) {
-  const origin = parseCellAddress(startCell);
-  values.forEach((rowValues, rowOffset) => {
-    rowValues.forEach((cellValue, colOffset) => {
-      worksheet.getCell(origin.row + rowOffset, origin.col + colOffset).value = cellValue;
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +168,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: "excel_document",
       description:
         "Legge, crea e modifica file Microsoft Excel (.xlsx, .xls). " +
-        "I file .xlsx usano ExcelJS; i file .xls legacy usano un fallback compatibile basato su SheetJS. " +
         "Azioni: " +
         "'list_sheets' elenca tutti i fogli del workbook; " +
         "'read_sheet' legge i valori di un foglio (opzionalmente filtrato per range); " +
@@ -501,36 +390,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === "excel_document") {
       const { action } = args;
-      const excelFormat = getExcelFormat(resolvedPath);
 
       switch (action) {
         case "list_sheets": {
           if (!fs.existsSync(resolvedPath)) {
             throw new Error(`File non trovato: ${resolvedPath}`);
           }
-
-          if (excelFormat === ".xlsx") {
-            const workbook = await readModernWorkbook(resolvedPath);
-            return {
-              content: [
-                {
-                  type: "text",
-                  text:
-                    `Fogli nel workbook (${workbook.worksheets.length}):\n` +
-                    workbook.worksheets.map((sheet, i) => `[${i}] ${sheet.name}`).join("\n"),
-                },
-              ],
-            };
-          }
-
-          const workbook = readLegacyWorkbook(resolvedPath);
+          const workbook = readWorkbook(resolvedPath);
           return {
             content: [
               {
                 type: "text",
                 text:
                   `Fogli nel workbook (${workbook.SheetNames.length}):\n` +
-                  workbook.SheetNames.map((sheet, i) => `[${i}] ${sheet}`).join("\n"),
+                  workbook.SheetNames.map((n, i) => `[${i}] ${n}`).join("\n"),
               },
             ],
           };
@@ -540,34 +413,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (!fs.existsSync(resolvedPath)) {
             throw new Error(`File non trovato: ${resolvedPath}`);
           }
+          const workbook = readWorkbook(resolvedPath);
+          const { sheet, name: sheetName } = resolveSheet(workbook, args.sheet_name);
 
-          let sheetName;
           let data;
-
-          if (excelFormat === ".xlsx") {
-            const workbook = await readModernWorkbook(resolvedPath);
-            const worksheet = args.sheet_name
-              ? workbook.getWorksheet(args.sheet_name)
-              : workbook.worksheets[0];
-            if (!worksheet) {
-              throw new Error("Nessun foglio disponibile nel workbook.");
-            }
-            sheetName = worksheet.name;
-            data = worksheetToArray(worksheet, parseRangeAddress(args.range));
+          if (args.range) {
+            const rangeParsed = XLSX.utils.decode_range(args.range);
+            data = XLSX.utils.sheet_to_json(sheet, {
+              header: 1,
+              defval: "",
+              range: rangeParsed,
+            });
           } else {
-            const workbook = readLegacyWorkbook(resolvedPath);
-            const resolved = resolveLegacySheet(workbook, args.sheet_name);
-            sheetName = resolved.name;
-            if (args.range) {
-              const rangeParsed = XLSX.utils.decode_range(args.range);
-              data = XLSX.utils.sheet_to_json(resolved.sheet, {
-                header: 1,
-                defval: "",
-                range: rangeParsed,
-              });
-            } else {
-              data = XLSX.utils.sheet_to_json(resolved.sheet, { header: 1, defval: "" });
-            }
+            data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
           }
 
           return {
@@ -589,40 +447,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             throw new Error("Il parametro 'values' e' obbligatorio per write_cells.");
           }
 
-          if (excelFormat === ".xlsx") {
-            const workbook = new ExcelJS.Workbook();
-            if (fs.existsSync(resolvedPath)) {
-              await workbook.xlsx.readFile(resolvedPath);
-            }
-
-            const targetName = sheet_name || workbook.worksheets[0]?.name || "Sheet1";
-            let worksheet = workbook.getWorksheet(targetName);
-            if (!worksheet) {
-              worksheet = workbook.addWorksheet(targetName);
-            }
-
-            writeValuesToWorksheet(worksheet, start_cell, values);
-            await workbook.xlsx.writeFile(resolvedPath);
-
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `OK ${values.length} righe scritte nel foglio "${targetName}" a partire da ${start_cell}.`,
-                },
-              ],
-            };
-          }
-
           let workbook;
           if (fs.existsSync(resolvedPath)) {
-            workbook = readLegacyWorkbook(resolvedPath);
+            workbook = readWorkbook(resolvedPath);
           } else {
             workbook = XLSX.utils.book_new();
           }
 
           const targetName = sheet_name || workbook.SheetNames[0] || "Sheet1";
           let sheet = workbook.Sheets[targetName];
+
           if (!sheet) {
             sheet = XLSX.utils.aoa_to_sheet([]);
             XLSX.utils.book_append_sheet(workbook, sheet, targetName);
@@ -643,33 +477,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         case "create": {
           const sheets = args.sheets || [{ name: "Sheet1", values: [] }];
-
-          if (excelFormat === ".xlsx") {
-            const workbook = new ExcelJS.Workbook();
-            for (const sheetConfig of sheets) {
-              const worksheet = workbook.addWorksheet(sheetConfig.name || "Sheet1");
-              if (Array.isArray(sheetConfig.values) && sheetConfig.values.length > 0) {
-                writeValuesToWorksheet(worksheet, "A1", sheetConfig.values);
-              }
-            }
-            await workbook.xlsx.writeFile(resolvedPath);
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `OK Workbook creato: ${resolvedPath} (${sheets.length} fogli)`,
-                },
-              ],
-            };
-          }
-
           const workbook = XLSX.utils.book_new();
-          for (const sheetConfig of sheets) {
-            const sheet = XLSX.utils.aoa_to_sheet(sheetConfig.values || []);
-            XLSX.utils.book_append_sheet(workbook, sheet, sheetConfig.name || "Sheet1");
-          }
-          XLSX.writeFile(workbook, resolvedPath);
 
+          for (const s of sheets) {
+            const sheet = XLSX.utils.aoa_to_sheet(s.values || []);
+            XLSX.utils.book_append_sheet(workbook, sheet, s.name || "Sheet1");
+          }
+
+          XLSX.writeFile(workbook, resolvedPath);
           return {
             content: [
               {
