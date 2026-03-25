@@ -1,29 +1,33 @@
 ---
 name: mcp-git-mantis-workflow
-description: Gestione del ciclo di vita del software integrando git-node e mantis-node. Utilizzare per legare commit Git a issue Mantis, analizzare conflitti e monitorare lo stato del progetto.
+description: Correlate tickets, commits, attachments, and merge conflicts across git-node and mantis-node. Use when the agent must investigate issue history, connect code changes to Mantis, download artifacts, or coordinate technical handoffs without losing traceability.
 ---
 
 # MCP Git & Mantis Workflow
 
-Questo skill unifica la gestione del codice e il tracking dei bug/task integrando `git-node` e `mantis-node`.
+Questo skill unifica gestione del codice e tracking dei bug/task integrando `git-node` e `mantis-node`, con attenzione a contesto, prove e passaggi di consegna verso skill tecniche.
 
-## Workflow Ottimizzato
+## Workflow Base
 
-1.  **Analisi Contesto**: Prima di lavorare su un bug, usa `mantis_issue_reader` (azione: `get_one`) per leggere la descrizione, le note e le relazioni (ticket collegati) del ticket.
-2.  **Tracking Git**: Usa `git_query` per identificare file modificati e storia dei commit.
-3.  **Cross-Referencing**:
-    *   Cerca l'ID dell'issue nei messaggi di commit (`git_query` con `search_text: "issue_id"`).
-    *   Usa `git_diff` per vedere cosa è cambiato rispetto alla baseline del ticket.
-4.  **Gestione Allegati**: Usa `mantis_files` con l'azione `download` e il parametro opzionale `save_path` per evitare il Token Bloat scaricando i file su disco.
-5.  **Aggiornamento Stato**: Dopo un commit importante, aggiungi una nota al ticket Mantis usando `mantis_add_note` includendo l'hash del commit.
+1. Leggi il ticket con `mantis_issue_reader` `action: "get_one"` prima di toccare Git.
+2. Usa `git_query` e `git_diff` per ricostruire file, commit e baseline del problema.
+3. Scarica allegati con `mantis_files` e `save_path` quando il materiale va letto localmente.
+4. Usa Git in sola lettura per analisi e handoff, salvo autorizzazione esplicita dell'utente a creare commit o staging.
+5. Lascia una nota Mantis quando hai prodotto una fix, un report, un allegato o una prova rilevante.
 
 ## Sinergie e Best Practices
 
-*   **Gestione Conflitti**: Usa `git_conflict_manager` per analizzare e risolvere merge/rebase complessi step-by-step.
-*   **Blame & Notes**: Se non capisci una riga di codice, usa `git_query` `action: "blame"`, trova l'autore e cerca eventuali note correlate in Mantis risalenti alla data del commit.
-*   **Clean Status**: Prima di qualsiasi operazione Mantis, verifica che il repo Git locale sia in uno stato pulito (`status`).
+* Usa `mcp-docs-navigator` se il ticket richiama procedure, analisi o documenti correlati.
+* Se i file toccati sono SQL o CFML, passa subito a `mcp-database-expert` o `mcp-coldfusion-developer` invece di tentare diagnosi profonde solo da Git.
+* Usa `git_conflict_manager` per merge o rebase complessi e `git_query` `action: "blame"` per contestualizzare i conflitti.
+* Prima di scrivere note operative, verifica lo stato del repo con `git_query` `action: "status"`.
+
+## Carica Riferimenti Solo Se Servono
+
+* [references/handoffs-and-conflicts.md](references/handoffs-and-conflicts.md) per modelli di nota, passaggi verso skill tecniche e gestione dei conflitti.
 
 ## Risoluzione Problemi
 
-*   **Mantis Connection**: Assicurati che `MANTIS_URL` e `MANTIS_TOKEN` nel `.env` siano corretti.
-*   **Git Error**: Molti tool Git richiedono il `project_path` assoluto. Verificalo prima di chiamare il tool.
+* Se Mantis non risponde, controlla `MANTIS_URL` e `MANTIS_TOKEN` nel `.env`.
+* Se Git non trova il repository, verifica `project_path` assoluto e che punti alla root giusta.
+* Se mancano prove nel ticket, allega file o cita percorsi/output invece di lasciare solo descrizioni generiche.

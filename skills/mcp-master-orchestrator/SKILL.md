@@ -1,47 +1,34 @@
 ---
 name: mcp-master-orchestrator
-description: Coordina l'utilizzo di tutti gli MCP server (CF, SQL, Git, Mantis, Playwright, Docs, Office) per task complessi. Utilizzare quando l'obiettivo richiede piu fasi (es. fix bug -> test -> deploy -> doc).
+description: Coordinate multi-step MCP work across docs, git, mantis, database, ColdFusion, browser, and office tools. Use when the goal spans multiple phases such as bug triage, reporting, onboarding, data migration, or post-fix validation.
 ---
 
 # MCP Master Orchestrator
 
-Questo skill guida l'agente nella scomposizione di un obiettivo complesso in sotto-task gestibili dagli MCP server specifici.
+Questo skill guida l'agente nella scomposizione di obiettivi complessi in una sequenza ordinata di skill specialistiche, riducendo salti di contesto, errori di coordinamento e duplicazioni.
 
 ## Matrice di Decisione
 
-| Se l'obiettivo e... | Usa lo skill... | Server MCP principali |
+| Se l'obiettivo e... | Parti da questo skill | Sidecar tipici |
 | :--- | :--- | :--- |
-| Investigare un bug segnalato | `mcp-git-mantis-workflow` | `mantis-node`, `git-node` |
-| Verificare dati o schema DB | `mcp-database-expert` | `sql-node`, `linter-node` |
-| Modificare logica ColdFusion | `mcp-coldfusion-developer` | `cf-node`, `linter-node` |
-| Capire regole di business | `mcp-docs-navigator` | `docs-node` |
-| Testare l'UI o flussi utente | `mcp-browser-automation` | `playwright-node` |
-| Leggere/modificare file Word o Excel, o estrarre testo da PDF | `mcp-office-expert` | `office-node` |
+| Investigare un bug segnalato | `mcp-git-mantis-workflow` | `mcp-docs-navigator`, `mcp-coldfusion-developer`, `mcp-browser-automation` |
+| Verificare dati o schema DB | `mcp-database-expert` | `mcp-docs-navigator`, `mcp-office-expert` |
+| Modificare logica ColdFusion | `mcp-coldfusion-developer` | `mcp-docs-navigator`, `mcp-browser-automation`, `mcp-git-mantis-workflow` |
+| Capire regole di business o procedure | `mcp-docs-navigator` | `mcp-database-expert`, `mcp-git-mantis-workflow` |
+| Testare UI o flussi utente | `mcp-browser-automation` | `mcp-coldfusion-developer`, `mcp-database-expert` |
+| Generare report o consegnabili | `mcp-office-expert` | `mcp-database-expert`, `mcp-docs-navigator`, `mcp-git-mantis-workflow` |
+| Gestire allegati, commit correlati o conflitti | `mcp-git-mantis-workflow` | `mcp-docs-navigator`, skill tecnica del file coinvolto |
+| Ingerire PDF o documenti nel corpus | `mcp-office-expert` | `mcp-docs-navigator` |
 
-## Workflow Multi-Fase Esempio: "Fix Regressione DB"
+## Loop di Coordinamento
 
-1. **Fase 1: Ricerca**
-   Usa `mcp-docs-navigator` per controllare `feature_status`, restringere il corpus con tag e cercare documentazione sullo schema.
-   Usa `mcp-git-mantis-workflow` per trovare il ticket Mantis originale e il commit che ha introdotto il bug.
-2. **Fase 2: Diagnosi**
-   Usa `mcp-database-expert` per ispezionare lo stato attuale dei dati.
-   Usa `mcp-coldfusion-developer` per leggere i log di errore del server.
-3. **Fase 3: Correzione**
-   Applica la fix SQL o CFML validando sempre con il linter.
-4. **Fase 4: Validazione**
-   Usa `mcp-browser-automation` per eseguire un test E2E che conferma la risoluzione.
-   Aggiorna il ticket in Mantis con l'hash del fix.
-5. **Fase 5: Documentazione**
-   Se la fix cambia comportamento o workflow, aggiorna la documentazione esistente e riallinea l'indice con `scan_file`.
-   Usa `bulk_set_document_tags` solo per inizializzazioni o riallineamenti massivi, non come default per piccoli update.
-   Se il contenuto di partenza è in PDF, usa `mcp-office-expert` per esportarlo prima in Markdown e poi indicizzarlo con `docs-node`.
+1. Definisci outcome, vincoli e `project_path` comune.
+2. Scegli uno skill primario e al massimo uno o due sidecar per la fase corrente.
+3. Esegui prima discovery stretta: docs, ticket, schema, log o DOM a seconda del dominio.
+4. Applica la modifica o raccogli la prova, poi valida con il tool piu vicino all'effetto finale.
+5. Lascia sempre un artefatto riusabile: nota Mantis, documento indicizzato, file Office o log di test.
 
-## Best Practices Trasversali
+## Carica Riferimenti Solo Se Servono
 
-* **Project path coerente**: Usa lo stesso `project_path` per tutti i tool che leggono `.env` o stato locale.
-* **Linter first**: Non eseguire mai codice SQL o CFML senza averlo prima validato.
-* **Docs first, ma stretto**: Quando consulti `docs-node`, preferisci corpus ridotti con `shelf`, `tags`, `tagged` e `limit` per contenere il consumo token.
-* **Feature awareness**: Se `docs-node` restituisce notice per `tags` o `scan_sources`, segui il workflow suggerito prima di affidarti a ricerche troppo larghe o resync incompleti.
-* **Log everything**: Aggiungi sempre note ai ticket Mantis per ogni azione significativa intrapresa.
-* **Docs update**: Se la fix cambia il comportamento del sistema, aggiorna la documentazione e mantieni coerenti scansione e classificazione.
-* **PDF as docs source**: Quando ricevi specifiche o analisi in PDF, non fermarti alla lettura puntuale: esporta in Markdown con `office-node` e passa a `docs-node` se quel contenuto deve restare interrogabile nei task futuri.
+* [references/workflows.md](references/workflows.md) per flussi completi come regressioni, report mensili e onboarding modulo.
+* [references/coordination-checklist.md](references/coordination-checklist.md) per checklist trasversale, session reuse e errori comuni.

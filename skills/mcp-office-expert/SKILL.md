@@ -1,11 +1,11 @@
 ---
 name: mcp-office-expert
-description: Legge, crea e modifica file Office e PDF (Word .docx/.doc, Excel .xlsx/.xls, PDF .pdf) tramite office-mcp-server. Utilizzare quando l'obiettivo riguarda analisi, estrazione o modifica di documenti locali.
+description: Read, create, and edit Word, Excel, and PDF files through MCP, including report generation and document export for docs indexing. Use when the task involves local documents, spreadsheet outputs, PDF extraction, or shared deliverables.
 ---
 
 # MCP Office Expert
 
-Questo skill guida l'agente nell'utilizzo di `office-mcp-server` per operare su file Word, Excel e PDF in modo preciso ed efficiente.
+Questo skill guida l'agente nell'uso di `office-mcp-server` per leggere, produrre e rifinire documenti locali senza perdere controllo su struttura, range e destinazione finale.
 
 ## Tool Disponibili
 
@@ -15,85 +15,39 @@ Questo skill guida l'agente nell'utilizzo di `office-mcp-server` per operare su 
 | `excel_document` | `.xlsx`, `.xls` | Legge, scrive e crea file Excel |
 | `pdf_document` | `.pdf` | Legge metadata e testo dei PDF ed esporta in `.md` o `.txt` |
 
----
+## Workflow Base
 
-## Workflow: Modifica Documento Word (.docx)
+### Word
 
-Per modificare contenuto esistente, **non indovinare mai l'indice** — recuperalo sempre prima.
+1. Usa `word_document` `action: "list_paragraphs"` prima di modificare: non indovinare mai l'indice.
+2. Usa `edit_paragraph`, `insert_paragraph` o `delete_paragraph` con l'indice corretto.
+3. Per file `.doc`, limita il lavoro a `action: "read"` e chiedi conversione a `.docx` se serve scrivere.
 
-1.  **Mappa il documento**: Usa `word_document` con `action: "list_paragraphs"` per ottenere l'elenco numerato di tutti i paragrafi.
-2.  **Individua il target**: Identifica l'indice `[N]` del paragrafo da modificare dall'output precedente.
-3.  **Applica la modifica**: Usa `word_document` con:
-    *   `action: "edit_paragraph"` + `paragraph_index: N` + `text: "..."` per sostituzione in-place.
-    *   `action: "insert_paragraph"` + `paragraph_index: N` + `text: "..."` per inserimento prima di N.
-    *   `action: "delete_paragraph"` + `paragraph_index: N` per rimozione.
+### Excel
 
-## Workflow: Lettura Documento Word
+1. Usa `excel_document` `action: "list_sheets"` per scoprire la struttura del workbook.
+2. Leggi il range target con `action: "read_sheet"` prima di sovrascrivere.
+3. Usa `write_cells` per aggiornare o `create` per generare un nuovo file.
 
-*   `.docx` e `.doc`: Usa `action: "read"` — restituisce il testo grezzo dell'intero documento.
-*   Per file `.doc` la **sola azione supportata è `read`**. Per modifiche, chiedi all'utente di convertire in `.docx`.
+### PDF
 
-## Workflow: Creazione Documento Word (.docx)
-
-Usa `action: "create"` + `paragraphs: [...]`. Ogni elemento dell'array è un oggetto:
-```json
-{ "text": "Titolo del documento", "heading": "1" }
-{ "text": "Testo corpo normale" }
-{ "text": "Sottosezione", "heading": "2" }
-```
-Livelli `heading` supportati: `"1"` – `"6"`. Se omesso, il blocco è un paragrafo normale.
-
----
-
-## Workflow: Lettura Foglio Excel (.xlsx / .xls)
-
-1.  **Scopri i fogli**: Usa `excel_document` con `action: "list_sheets"` per ottenere i nomi di tutti i fogli.
-2.  **Leggi i dati**: Usa `action: "read_sheet"` con:
-    *   `sheet_name`: nome del foglio (se omesso, usa il primo).
-    *   `range`: range opzionale in formato A1 (es. `"A1:F20"`). Se omesso, legge l'intero foglio.
-    *   Il risultato è un **array 2D** (righe × colonne) in JSON.
-
-## Workflow: Scrittura / Aggiornamento Excel
-
-*   **Aggiorna celle esistenti**: `action: "write_cells"` + `values: [[...], [...]]` + `start_cell: "A1"` (default).
-    *   I dati vengono scritti a partire dalla cella indicata, sovrascrivendo le celle occupate.
-    *   Il foglio e il file devono esistere già, oppure verranno creati automaticamente.
-*   **Crea nuovo file**: `action: "create"` + `sheets: [{ "name": "Foglio1", "values": [[...]] }]`.
-
----
-
-## Workflow: Lettura PDF (.pdf)
-
-1.  **Controlla la struttura**: Usa `pdf_document` con `action: "metadata"` per ottenere numero pagine e metadata principali.
-2.  **Leggi solo il necessario**:
-    *   `action: "read_page"` + `page_number` per una singola pagina.
-    *   `action: "read_range"` + `start_page` / `end_page` per una porzione mirata.
-    *   `action: "read_all"` solo se serve davvero l'intero documento.
-3.  **Gestisci i limiti del formato**: Se il PDF è scannerizzato o image-only, il tool può restituire `(nessun testo estraibile)`. In quel caso segnala il limite invece di insistere con altre letture testuali.
-
-## Workflow: Export PDF per Reuso o Indicizzazione
-
-*   Usa `pdf_document` con `action: "export_text"` per salvare il contenuto in locale.
-*   Parametri chiave:
-    *   `save_path`: percorso assoluto del file di output.
-    *   `format: "md"` quando il file verrà indicizzato da `docs-node`.
-    *   `format: "txt"` quando serve solo un dump testuale semplice.
-*   Le cartelle mancanti del `save_path` vengono create automaticamente dal server.
-*   L'export in Markdown crea sezioni `## Pagina N`, utili per ricerche e rilettura mirata.
+1. Parti da `pdf_document` `action: "metadata"`.
+2. Leggi solo `read_page` o `read_range` finche possibile.
+3. Usa `export_text` con `format: "md"` se il contenuto deve entrare in `mcp-docs-navigator`.
 
 ## Sinergie e Best Practices
 
-*   **Analisi documentale**: Combina `read` (word) e `export_text` (pdf) con `mcp-docs-navigator` per indicizzare e cercare nei documenti estratti.
-*   **Report automatici**: Usa `excel_document` (`write_cells`) per produrre output tabulari di query SQL ottenuti da `mcp-database-expert`.
-*   **PDF -> Docs**: Per rendere un PDF interrogabile con `docs-node`, esportalo in `.md` con `pdf_document` (`export_text`) e poi indicizzalo con `docs_management` (`scan_file`) o tramite una cartella dedicata con `scan_folder`.
-*   **Verifica prima di scrivere**: Per Excel, leggi sempre il range target con `read_sheet` prima di sovrascrivere, per evitare perdita di dati.
-*   **Backup implicito**: Le modifiche a `.docx` e `.xlsx` sono in-place e **non reversibili** dal tool. Se il file è prezioso, suggerisci all'utente di fare una copia prima di procedere.
+* Combina `mcp-database-expert` + `excel_document` per produrre report tabellari riusabili.
+* Dopo aver creato o esportato un documento che deve restare ricercabile, usa `mcp-docs-navigator` per `scan_file` e tagging.
+* Le modifiche a `.docx` e `.xlsx` sono in-place e non reversibili dal tool: se il file e prezioso, crea prima una copia.
+* Per output condivisi, preferisci un percorso chiaro e stabile invece di lasciare il file in cartelle temporanee.
+
+## Carica Riferimenti Solo Se Servono
+
+* [references/report-workflow.md](references/report-workflow.md) per il flusso completo query -> Excel -> Word -> docs/ticket.
 
 ## Risoluzione Problemi
 
-*   **"File non trovato"**: Verifica che `file_path` sia un percorso assoluto esistente.
-*   **"Indice fuori dai limiti"**: Riesegui `list_paragraphs` — la struttura del documento potrebbe essere cambiata dall'ultima lettura.
-*   **Caratteri speciali persi**: L'azione `edit_paragraph` rimuove la formattazione del run (grassetto, corsivo). Per documenti con formattazione complessa, preferisci `insert_paragraph` + `delete_paragraph` per preservare i run vicini.
-*   **File `.xls` in sola lettura**: Alcuni `.xls` molto vecchi (pre-Excel 97) potrebbero non essere scrivibili. Chiedi all'utente di salvare il file in `.xlsx` da Excel.
-*   **PDF senza testo**: Se `read_page` o `read_all` restituiscono `(nessun testo estraibile)`, il PDF probabilmente contiene solo immagini; il tool non esegue OCR.
-*   **Export fallito**: Verifica che `save_path` sia assoluto e punti a una destinazione scrivibile. Il server crea la cartella, ma non può aggirare permessi filesystem insufficienti.
+* Se un indice Word non torna, riesegui `list_paragraphs`: la struttura puo essere cambiata dopo una modifica precedente.
+* Se un PDF non restituisce testo, segnala il limite del file scannerizzato invece di insistere.
+* Se `save_path` fallisce, verifica percorso assoluto e permessi filesystem.
