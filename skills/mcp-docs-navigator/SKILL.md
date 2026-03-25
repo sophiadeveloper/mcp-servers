@@ -22,15 +22,17 @@ Questo skill ottimizza l'accesso alla documentazione interna del progetto utiliz
 
 * **Pre-analisi**: Prima di iniziare un task SQL o ColdFusion, prova prima `search` con tag ad alto segnale come `database`, `cfml`, `procedura`, `analisi-tecnica`, poi aggiungi la `query`.
 * **Riduzione token**: Preferisci `list_documents` con filtri tag o `search` con `limit` basso prima di aprire documenti lunghi.
+* **Ingestione PDF indiretta**: `docs-node` indicizza Markdown, non PDF nativi. Se devi rendere un PDF ricercabile, usa prima `mcp-office-expert` / `pdf_document` con `action: "export_text"` e `format: "md"`, poi indicizza il file esportato con `scan_file`.
 * **Nuovi corpus verticali**: Quando indicizzi per la prima volta una documentazione omogenea (prodotto, addon, modulo o dominio specifico), crea almeno un tag di dominio condiviso da tutto il corpus e aggiungi tag di capability o entita ricorrenti solo se migliorano davvero la ricerca.
 * **Aggiornamento continuo**: Dopo aver modificato un documento noto, esegui `scan_file` invece di rifare una scansione ampia della cartella.
+* **Cartelle di export dedicate**: Se importi molti PDF, mantieni una cartella stabile di Markdown esportati e registrala con `scan_folder`, cosi i resync futuri restano semplici e prevedibili.
 * **Governance tag**: Non assegnare tag arbitrari ai documenti. Se un tag manca, prima crealo nel dizionario con descrizione chiara.
 * **Strategia tag**: In corpus come integrazioni provider-based o moduli multi-funzione, privilegia una combinazione `dominio + capability + provider/modulo` invece di affidarti solo allo scaffale o alla ricerca full-text.
 * **Snippet di esempio**: Cerca frammenti o procedure esistenti prima di riscriverli da zero.
 
 ## Risoluzione Problemi
 
-* **Risultati vuoti**: Verifica che il file sia effettivamente in formato Markdown (`.md`), che il percorso di scansione sia corretto e che i filtri tag non siano troppo restrittivi.
+* **Risultati vuoti**: Verifica che il file sia effettivamente in formato Markdown (`.md`), che il percorso di scansione sia corretto e che i filtri tag non siano troppo restrittivi. Se la sorgente originale è un PDF, assicurati di averlo prima esportato in Markdown.
 * **Troppo rumore**: Restringi il corpus con `shelf`, `tags`, `tagged`, `limit` o usa `list_documents` prima di una nuova `search`.
 * **Feature non inizializzata**: Segui le istruzioni restituite da `feature_status` o dal notice della feature (`tags`, `scan_sources`).
 * **Errore database**: Se l'indice sembra corrotto, usa `remove_shelf` e rifai una scansione mirata della sola root necessaria.

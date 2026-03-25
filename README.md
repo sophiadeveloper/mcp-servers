@@ -233,7 +233,7 @@ Questo server indicizza file Markdown (`.md`) e cartelle in un database locale S
 
 ### H. Office MCP Server (`office-node`)
 
-Server locale Node.js per la manipolazione di file Microsoft Office. **Sostituisce il precedente `@negokaz/excel-mcp-server`** e non richiede Python o dipendenze esterne.
+Server locale Node.js per la manipolazione di documenti Office e PDF. **Sostituisce il precedente `@negokaz/excel-mcp-server`** e non richiede Python o dipendenze esterne.
 
 ```json
 "office-mcp-server": {
@@ -251,10 +251,13 @@ Server locale Node.js per la manipolazione di file Microsoft Office. **Sostituis
 | `.docx` | `read`, `list_paragraphs`, `create`, `edit_paragraph`, `insert_paragraph`, `delete_paragraph` |
 | `.doc` | `read` (sola lettura) |
 | `.xlsx` / `.xls` | `list_sheets`, `read_sheet`, `write_cells`, `create` |
+| `.pdf` | `metadata`, `read_all`, `read_page`, `read_range`, `export_text` |
 
 **Tool esposti:**
 *   `word_document`: Legge, crea e modifica file Word. Usa `list_paragraphs` per ottenere gli indici e poi `edit_paragraph` o `insert_paragraph` per modificare con precisione.
 *   `excel_document`: Legge e scrive file Excel. Usa `list_sheets` per scoprire i fogli, `read_sheet` con `range` opzionale (es. `"A1:D10"`) per leggere, `write_cells` con `values` (array 2D) per scrivere.
+*   `pdf_document`: Legge i PDF con PDF.js. Usa `metadata` per ottenere numero pagine e metadata, `read_page` o `read_range` per estrarre testo mirato, `read_all` per tutto il documento ed `export_text` per salvare il contenuto in `.md` o `.txt`. In `export_text`, le cartelle mancanti del `save_path` vengono create automaticamente.
+*   **Sinergia con `docs-node`**: per indicizzare un PDF nella documentazione, usa `pdf_document` con `action: "export_text"`, `format: "md"` e un `save_path` locale; poi passa il file esportato a `docs_management` con `action: "scan_file"`. Se mantieni una cartella di export in Markdown, potrai anche usare `scan_folder` per risincronizzarla.
 
 ---
 

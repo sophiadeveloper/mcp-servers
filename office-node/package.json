@@ -1,7 +1,7 @@
 {
   "name": "office-node",
-  "version": "1.1.0",
-  "description": "MCP server per la manipolazione di file Microsoft Office: Word (.docx, .doc) ed Excel (.xlsx, .xls)",
+  "version": "1.2.0",
+  "description": "MCP server per la manipolazione di documenti locali: Word (.docx, .doc), Excel (.xlsx, .xls) e PDF (.pdf)",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -15,6 +15,7 @@
     "@xmldom/xmldom": "^0.9.8",
     "docx": "^9.5.1",
     "mammoth": "^1.9.0",
+    "pdfjs-dist": "^5.5.207",
     "pizzip": "^3.1.7",
     "word-extractor": "^1.0.4",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"

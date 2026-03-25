@@ -1,11 +1,11 @@
 ---
 name: mcp-office-expert
-description: Legge, crea e modifica file Microsoft Office (Word .docx/.doc ed Excel .xlsx/.xls) tramite office-mcp-server. Utilizzare quando l'obiettivo riguarda l'analisi, la generazione o la modifica di documenti Word o fogli di calcolo Excel.
+description: Legge, crea e modifica file Office e PDF (Word .docx/.doc, Excel .xlsx/.xls, PDF .pdf) tramite office-mcp-server. Utilizzare quando l'obiettivo riguarda analisi, estrazione o modifica di documenti locali.
 ---
 
 # MCP Office Expert
 
-Questo skill guida l'agente nell'utilizzo di `office-mcp-server` per operare su file Microsoft Office in modo preciso ed efficiente.
+Questo skill guida l'agente nell'utilizzo di `office-mcp-server` per operare su file Word, Excel e PDF in modo preciso ed efficiente.
 
 ## Tool Disponibili
 
@@ -13,6 +13,7 @@ Questo skill guida l'agente nell'utilizzo di `office-mcp-server` per operare su 
 | :--- | :--- | :--- |
 | `word_document` | `.docx`, `.doc` | Legge, crea e modifica documenti Word |
 | `excel_document` | `.xlsx`, `.xls` | Legge, scrive e crea file Excel |
+| `pdf_document` | `.pdf` | Legge metadata e testo dei PDF ed esporta in `.md` o `.txt` |
 
 ---
 
@@ -59,10 +60,32 @@ Livelli `heading` supportati: `"1"` – `"6"`. Se omesso, il blocco è un paragr
     *   Il foglio e il file devono esistere già, oppure verranno creati automaticamente.
 *   **Crea nuovo file**: `action: "create"` + `sheets: [{ "name": "Foglio1", "values": [[...]] }]`.
 
+---
+
+## Workflow: Lettura PDF (.pdf)
+
+1.  **Controlla la struttura**: Usa `pdf_document` con `action: "metadata"` per ottenere numero pagine e metadata principali.
+2.  **Leggi solo il necessario**:
+    *   `action: "read_page"` + `page_number` per una singola pagina.
+    *   `action: "read_range"` + `start_page` / `end_page` per una porzione mirata.
+    *   `action: "read_all"` solo se serve davvero l'intero documento.
+3.  **Gestisci i limiti del formato**: Se il PDF è scannerizzato o image-only, il tool può restituire `(nessun testo estraibile)`. In quel caso segnala il limite invece di insistere con altre letture testuali.
+
+## Workflow: Export PDF per Reuso o Indicizzazione
+
+*   Usa `pdf_document` con `action: "export_text"` per salvare il contenuto in locale.
+*   Parametri chiave:
+    *   `save_path`: percorso assoluto del file di output.
+    *   `format: "md"` quando il file verrà indicizzato da `docs-node`.
+    *   `format: "txt"` quando serve solo un dump testuale semplice.
+*   Le cartelle mancanti del `save_path` vengono create automaticamente dal server.
+*   L'export in Markdown crea sezioni `## Pagina N`, utili per ricerche e rilettura mirata.
+
 ## Sinergie e Best Practices
 
-*   **Analisi documentale**: Combina `read` (word) con `mcp-docs-navigator` per indicizzare e cercare nei documenti estratti.
+*   **Analisi documentale**: Combina `read` (word) e `export_text` (pdf) con `mcp-docs-navigator` per indicizzare e cercare nei documenti estratti.
 *   **Report automatici**: Usa `excel_document` (`write_cells`) per produrre output tabulari di query SQL ottenuti da `mcp-database-expert`.
+*   **PDF -> Docs**: Per rendere un PDF interrogabile con `docs-node`, esportalo in `.md` con `pdf_document` (`export_text`) e poi indicizzalo con `docs_management` (`scan_file`) o tramite una cartella dedicata con `scan_folder`.
 *   **Verifica prima di scrivere**: Per Excel, leggi sempre il range target con `read_sheet` prima di sovrascrivere, per evitare perdita di dati.
 *   **Backup implicito**: Le modifiche a `.docx` e `.xlsx` sono in-place e **non reversibili** dal tool. Se il file è prezioso, suggerisci all'utente di fare una copia prima di procedere.
 
@@ -72,3 +95,5 @@ Livelli `heading` supportati: `"1"` – `"6"`. Se omesso, il blocco è un paragr
 *   **"Indice fuori dai limiti"**: Riesegui `list_paragraphs` — la struttura del documento potrebbe essere cambiata dall'ultima lettura.
 *   **Caratteri speciali persi**: L'azione `edit_paragraph` rimuove la formattazione del run (grassetto, corsivo). Per documenti con formattazione complessa, preferisci `insert_paragraph` + `delete_paragraph` per preservare i run vicini.
 *   **File `.xls` in sola lettura**: Alcuni `.xls` molto vecchi (pre-Excel 97) potrebbero non essere scrivibili. Chiedi all'utente di salvare il file in `.xlsx` da Excel.
+*   **PDF senza testo**: Se `read_page` o `read_all` restituiscono `(nessun testo estraibile)`, il PDF probabilmente contiene solo immagini; il tool non esegue OCR.
+*   **Export fallito**: Verifica che `save_path` sia assoluto e punti a una destinazione scrivibile. Il server crea la cartella, ma non può aggirare permessi filesystem insufficienti.

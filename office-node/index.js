@@ -4,6 +4,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import mammoth from "mammoth";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import PizZip from "pizzip";
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
@@ -18,6 +19,7 @@ const XLSX = createRequire(import.meta.url)("xlsx");
 // ---------------------------------------------------------------------------
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
+const EMPTY_EXTRACTED_TEXT = "(nessun testo estraibile)";
 
 // ---------------------------------------------------------------------------
 // .docx helpers
@@ -92,10 +94,160 @@ function resolveSheet(workbook, sheetName) {
 }
 
 // ---------------------------------------------------------------------------
+// PDF helpers (PDF.js)
+// ---------------------------------------------------------------------------
+function normalizePdfError(error) {
+  if (!error) return "Errore sconosciuto nella lettura del PDF.";
+  if (error.name === "PasswordException") {
+    return "Il PDF e' protetto da password e non puo' essere letto senza credenziali.";
+  }
+  return error.message || String(error);
+}
+
+function validatePageNumber(value, fieldName, totalPages) {
+  const pageNumber = Number(value);
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > totalPages) {
+    throw new Error(
+      `Il parametro '${fieldName}' deve essere un intero tra 1 e ${totalPages}. Valore ricevuto: ${value}.`
+    );
+  }
+  return pageNumber;
+}
+
+function normalizePdfTextItems(items) {
+  const parts = [];
+
+  for (const item of items) {
+    if (!item || typeof item.str !== "string") continue;
+
+    if (item.str.length > 0) {
+      parts.push(item.str);
+    }
+
+    if (item.hasEOL) {
+      parts.push("\n");
+    } else if (item.str.length > 0) {
+      parts.push(" ");
+    }
+  }
+
+  const normalized = parts
+    .join("")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+
+  return normalized || EMPTY_EXTRACTED_TEXT;
+}
+
+async function withPdfDocument(filePath, callback) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File non trovato: ${filePath}`);
+  }
+
+  const loadingTask = getDocument(filePath);
+  let pdfDocument = null;
+
+  try {
+    pdfDocument = await loadingTask.promise;
+    return await callback(pdfDocument);
+  } catch (error) {
+    throw new Error(normalizePdfError(error));
+  } finally {
+    if (pdfDocument && typeof pdfDocument.destroy === "function") {
+      await pdfDocument.destroy();
+    } else if (typeof loadingTask.destroy === "function") {
+      await loadingTask.destroy();
+    }
+  }
+}
+
+async function readPdfMetadata(pdfDocument) {
+  try {
+    const { info, metadata, contentDispositionFilename } = await pdfDocument.getMetadata();
+    return {
+      page_count: pdfDocument.numPages,
+      info: info || {},
+      metadata: metadata && typeof metadata.getAll === "function" ? metadata.getAll() : null,
+      content_disposition_filename: contentDispositionFilename || null,
+    };
+  } catch {
+    return {
+      page_count: pdfDocument.numPages,
+      info: {},
+      metadata: null,
+      content_disposition_filename: null,
+    };
+  }
+}
+
+async function readPdfPageText(pdfDocument, pageNumber) {
+  const page = await pdfDocument.getPage(pageNumber);
+
+  try {
+    const textContent = await page.getTextContent();
+    return normalizePdfTextItems(textContent.items || []);
+  } finally {
+    page.cleanup();
+  }
+}
+
+async function readPdfPages(pdfDocument, startPage, endPage) {
+  const pages = [];
+
+  for (let pageNumber = startPage; pageNumber <= endPage; pageNumber += 1) {
+    pages.push({
+      page_number: pageNumber,
+      text: await readPdfPageText(pdfDocument, pageNumber),
+    });
+  }
+
+  return pages;
+}
+
+function formatPdfPagesAsText(pages) {
+  return pages
+    .map((page) => `--- Pagina ${page.page_number} ---\n${page.text}`)
+    .join("\n\n");
+}
+
+function formatPdfPagesAsMarkdown(filePath, metadata, pages) {
+  const title =
+    metadata.info?.Title?.trim() || path.basename(filePath, path.extname(filePath));
+
+  const lines = [
+    `# ${title}`,
+    "",
+    `- Source: ${filePath}`,
+    `- Pages: ${metadata.page_count}`,
+  ];
+
+  if (metadata.info?.Author) {
+    lines.push(`- Author: ${metadata.info.Author}`);
+  }
+
+  if (metadata.info?.Producer) {
+    lines.push(`- Producer: ${metadata.info.Producer}`);
+  }
+
+  lines.push("");
+
+  for (const page of pages) {
+    lines.push(`## Pagina ${page.page_number}`);
+    lines.push("");
+    lines.push(page.text);
+    lines.push("");
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+// ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "office-mcp-server", version: "1.1.0" },
+  { name: "office-mcp-server", version: "1.2.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -227,12 +379,62 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["action", "file_path"],
       },
     },
+    {
+      name: "pdf_document",
+      description:
+        "Legge file PDF (.pdf) ed estrae testo e metadata. " +
+        "Azioni: " +
+        "'metadata' restituisce il numero di pagine e i metadata disponibili; " +
+        "'read_all' estrae il testo di tutto il documento con separatori per pagina; " +
+        "'read_page' estrae il testo di una singola pagina; " +
+        "'read_range' estrae il testo di un intervallo di pagine; " +
+        "'export_text' salva su disco il testo estratto in formato .md o .txt per riutilizzo o indicizzazione.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["metadata", "read_all", "read_page", "read_range", "export_text"],
+            description: "L'operazione da eseguire sul file PDF.",
+          },
+          file_path: {
+            type: "string",
+            description: "Percorso assoluto al file PDF (.pdf).",
+          },
+          page_number: {
+            type: "number",
+            description: "Numero pagina 1-based (necessario per 'read_page').",
+          },
+          start_page: {
+            type: "number",
+            description: "Pagina iniziale 1-based (necessaria per 'read_range').",
+          },
+          end_page: {
+            type: "number",
+            description: "Pagina finale 1-based inclusiva (necessaria per 'read_range').",
+          },
+          save_path: {
+            type: "string",
+            description:
+              "Percorso assoluto del file di export (necessario per 'export_text').",
+          },
+          format: {
+            type: "string",
+            enum: ["md", "txt"],
+            description:
+              "Formato del file esportato per 'export_text'. Default: 'md'.",
+          },
+        },
+        required: ["action", "file_path"],
+      },
+    },
   ],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  const resolvedPath = path.resolve(args.file_path);
+  const { name, arguments: rawArgs } = request.params;
+  const args = rawArgs || {};
+  const resolvedPath = args.file_path ? path.resolve(args.file_path) : null;
 
   try {
     if (name === "word_document") {
@@ -497,6 +699,107 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         default:
           throw new Error(`Azione non valida per excel_document: ${action}`);
+      }
+    }
+
+    if (name === "pdf_document") {
+      const { action } = args;
+
+      if (!resolvedPath) {
+        throw new Error("Il parametro 'file_path' e' obbligatorio.");
+      }
+
+      if (path.extname(resolvedPath).toLowerCase() !== ".pdf") {
+        throw new Error(`Il tool pdf_document supporta solo file .pdf. File ricevuto: ${resolvedPath}`);
+      }
+
+      switch (action) {
+        case "metadata": {
+          return withPdfDocument(resolvedPath, async (pdfDocument) => {
+            const metadata = await readPdfMetadata(pdfDocument);
+            return {
+              content: [{ type: "text", text: JSON.stringify(metadata, null, 2) }],
+            };
+          });
+        }
+
+        case "read_all": {
+          return withPdfDocument(resolvedPath, async (pdfDocument) => {
+            const pages = await readPdfPages(pdfDocument, 1, pdfDocument.numPages);
+            return {
+              content: [{ type: "text", text: formatPdfPagesAsText(pages) }],
+            };
+          });
+        }
+
+        case "read_page": {
+          return withPdfDocument(resolvedPath, async (pdfDocument) => {
+            const pageNumber = validatePageNumber(args.page_number, "page_number", pdfDocument.numPages);
+            const text = await readPdfPageText(pdfDocument, pageNumber);
+            return {
+              content: [{ type: "text", text: `--- Pagina ${pageNumber} ---\n${text}` }],
+            };
+          });
+        }
+
+        case "read_range": {
+          return withPdfDocument(resolvedPath, async (pdfDocument) => {
+            const startPage = validatePageNumber(args.start_page, "start_page", pdfDocument.numPages);
+            const endPage = validatePageNumber(args.end_page, "end_page", pdfDocument.numPages);
+
+            if (startPage > endPage) {
+              throw new Error(
+                `Intervallo non valido: start_page (${startPage}) non puo' essere maggiore di end_page (${endPage}).`
+              );
+            }
+
+            const pages = await readPdfPages(pdfDocument, startPage, endPage);
+            return {
+              content: [{ type: "text", text: formatPdfPagesAsText(pages) }],
+            };
+          });
+        }
+
+        case "export_text": {
+          const savePath = args.save_path ? path.resolve(args.save_path) : null;
+          const format = args.format || "md";
+
+          if (!savePath) {
+            throw new Error("Il parametro 'save_path' e' obbligatorio per export_text.");
+          }
+
+          if (!["md", "txt"].includes(format)) {
+            throw new Error(`Formato non supportato per export_text: ${format}. Usa 'md' o 'txt'.`);
+          }
+
+          return withPdfDocument(resolvedPath, async (pdfDocument) => {
+            const metadata = await readPdfMetadata(pdfDocument);
+            const pages = await readPdfPages(pdfDocument, 1, pdfDocument.numPages);
+            const output =
+              format === "md"
+                ? formatPdfPagesAsMarkdown(resolvedPath, metadata, pages)
+                : formatPdfPagesAsText(pages);
+
+            const outputDir = path.dirname(savePath);
+            fs.mkdirSync(outputDir, { recursive: true });
+            fs.writeFileSync(savePath, output, "utf8");
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `OK Testo PDF esportato in: ${savePath}\n` +
+                    `Formato: ${format}\n` +
+                    `Pagine esportate: ${pages.length}`,
+                },
+              ],
+            };
+          });
+        }
+
+        default:
+          throw new Error(`Azione non valida per pdf_document: ${action}`);
       }
     }
 

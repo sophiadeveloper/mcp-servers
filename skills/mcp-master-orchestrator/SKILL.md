@@ -16,7 +16,7 @@ Questo skill guida l'agente nella scomposizione di un obiettivo complesso in sot
 | Modificare logica ColdFusion | `mcp-coldfusion-developer` | `cf-node`, `linter-node` |
 | Capire regole di business | `mcp-docs-navigator` | `docs-node` |
 | Testare l'UI o flussi utente | `mcp-browser-automation` | `playwright-node` |
-| Leggere/modificare file Word o Excel | `mcp-office-expert` | `office-node` |
+| Leggere/modificare file Word o Excel, o estrarre testo da PDF | `mcp-office-expert` | `office-node` |
 
 ## Workflow Multi-Fase Esempio: "Fix Regressione DB"
 
@@ -34,6 +34,7 @@ Questo skill guida l'agente nella scomposizione di un obiettivo complesso in sot
 5. **Fase 5: Documentazione**
    Se la fix cambia comportamento o workflow, aggiorna la documentazione esistente e riallinea l'indice con `scan_file`.
    Usa `bulk_set_document_tags` solo per inizializzazioni o riallineamenti massivi, non come default per piccoli update.
+   Se il contenuto di partenza è in PDF, usa `mcp-office-expert` per esportarlo prima in Markdown e poi indicizzarlo con `docs-node`.
 
 ## Best Practices Trasversali
 
@@ -43,3 +44,4 @@ Questo skill guida l'agente nella scomposizione di un obiettivo complesso in sot
 * **Feature awareness**: Se `docs-node` restituisce notice per `tags` o `scan_sources`, segui il workflow suggerito prima di affidarti a ricerche troppo larghe o resync incompleti.
 * **Log everything**: Aggiungi sempre note ai ticket Mantis per ogni azione significativa intrapresa.
 * **Docs update**: Se la fix cambia il comportamento del sistema, aggiorna la documentazione e mantieni coerenti scansione e classificazione.
+* **PDF as docs source**: Quando ricevi specifiche o analisi in PDF, non fermarti alla lettura puntuale: esporta in Markdown con `office-node` e passa a `docs-node` se quel contenuto deve restare interrogabile nei task futuri.
