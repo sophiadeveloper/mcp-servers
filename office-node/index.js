@@ -20,6 +20,22 @@ const XLSX = createRequire(import.meta.url)("xlsx");
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
 const EMPTY_EXTRACTED_TEXT = "(nessun testo estraibile)";
+const wordParagraphBlockSchema = {
+  type: "object",
+  properties: {
+    text: { type: "string", description: "Testo del blocco." },
+    heading: {
+      type: "string",
+      enum: ["1", "2", "3", "4", "5", "6"],
+      description: "Livello di intestazione (opzionale).",
+    },
+  },
+  required: ["text"],
+};
+const excelCellSchema = {
+  anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
+  description: "Valore di una cella Excel.",
+};
 
 // ---------------------------------------------------------------------------
 // .docx helpers
@@ -247,7 +263,7 @@ function formatPdfPagesAsMarkdown(filePath, metadata, pages) {
 // MCP Server
 // ---------------------------------------------------------------------------
 const server = new Server(
-  { name: "office-mcp-server", version: "1.2.0" },
+  { name: "office-mcp-server", version: "1.2.1" },
   { capabilities: { tools: {} } }
 );
 
@@ -288,18 +304,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           paragraphs: {
             type: "array",
-            items: {
-              type: "object",
-              properties: {
-                text: { type: "string", description: "Testo del blocco." },
-                heading: {
-                  type: "string",
-                  enum: ["1", "2", "3", "4", "5", "6"],
-                  description: "Livello di intestazione (opzionale).",
-                },
-              },
-              required: ["text"],
-            },
+            items: wordParagraphBlockSchema,
             description: "Array di blocchi di contenuto (necessario per 'create').",
           },
           paragraph_index: {
@@ -354,7 +359,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           values: {
             type: "array",
-            items: { type: "array" },
+            items: {
+              type: "array",
+              items: excelCellSchema,
+            },
             description:
               "Array 2D di valori da scrivere (necessario per 'write_cells'). Ogni elemento dell'array esterno e' una riga.",
           },
@@ -366,7 +374,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 name: { type: "string", description: "Nome del foglio." },
                 values: {
                   type: "array",
-                  items: { type: "array" },
+                  items: {
+                    type: "array",
+                    items: excelCellSchema,
+                  },
                   description: "Dati del foglio come array 2D.",
                 },
               },
@@ -679,9 +690,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         case "create": {
           const sheets = args.sheets || [{ name: "Sheet1", values: [] }];
+          if (!Array.isArray(sheets)) {
+            throw new Error("Il parametro 'sheets' deve essere un array di fogli.");
+          }
           const workbook = XLSX.utils.book_new();
 
           for (const s of sheets) {
+            if (s.values !== undefined && !Array.isArray(s.values)) {
+              throw new Error(`Il parametro 'sheets[${s.name || "Sheet1"}].values' deve essere un array 2D.`);
+            }
             const sheet = XLSX.utils.aoa_to_sheet(s.values || []);
             XLSX.utils.book_append_sheet(workbook, sheet, s.name || "Sheet1");
           }
