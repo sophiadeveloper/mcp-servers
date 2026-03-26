@@ -42,19 +42,11 @@ resolve_path_or_prompt() {
 }
 
 echo -e "--- Ricerca dei percorsi di base ---"
-NODE_AUTO=$(which node 2>/dev/null)
-NODE_PATH_RAW=$(resolve_path_or_prompt "Node.js" "$NODE_AUTO" "Inserisci il percorso assoluto di node (es. /usr/bin/node)")
-export NODE_PATH=${NODE_PATH_RAW:-"<NODE_BIN_PATH_MISSING>"}
-
 ROOT_AUTO=$(pwd)
 ROOT_DIR_RAW=$(resolve_path_or_prompt "Directory Server MCP" "$ROOT_AUTO" "Inserisci il percorso della cartella contenente i server")
 export ROOT_DIR=${ROOT_DIR_RAW:-$(pwd)}
 
 echo -e "\n--- Ricerca delle dipendenze per i server specifici ---"
-GIT_EXE=$(which git 2>/dev/null)
-GIT_AUTO=$([[ -n "$GIT_EXE" ]] && dirname "$GIT_EXE" || echo "/usr/bin")
-GIT_CMD_PATH_RAW=$(resolve_path_or_prompt "Git Directory" "$GIT_AUTO" "Inserisci il percorso della cartella bin di Git")
-export GIT_CMD_PATH=${GIT_CMD_PATH_RAW:-"<GIT_BIN_PATH_MISSING>"}
 
 # Percorso fittizio tipico per installazioni Linux (modificalo se hai un path standard)
 CFLINT_PATH_RAW=$(resolve_path_or_prompt "CFLint JAR" "/opt/cflint/CFLint-1.5.0-all.jar" "Inserisci il file .jar di CFLint")
@@ -73,12 +65,9 @@ node -e "
 const fs = require('fs');
 const path = require('path');
 
-const nodePath = process.env.NODE_PATH;
 const rootDir = process.env.ROOT_DIR;
-const gitCmdPath = process.env.GIT_CMD_PATH;
 const cfLintPath = process.env.CFLINT_PATH;
 const javaPath = process.env.JAVA_PATH;
-const envPath = process.env.PATH;
 
 const settingsPath = path.join(rootDir, 'settings.json');
 let settings = {};
@@ -101,8 +90,7 @@ if (!settings.mcpServers) {
 const servers = [
     { name: 'cf-mcp-server', dir: 'cf-node', args: ['index.js'] },
     { name: 'docs-mcp-server', dir: 'docs-node', args: ['index.js'] },
-    // In Linux usiamo i due punti (:) per separare i percorsi della variabile PATH
-    { name: 'git-mcp-server', dir: 'git-node', args: ['index.js'], env: { PATH: gitCmdPath + ':' + envPath } },
+    { name: 'git-mcp-server', dir: 'git-node', args: ['index.js'] },
     { name: 'linter-mcp-server', dir: 'linter-node', args: ['dist/index.js'] },
     { name: 'mantis-mcp-server', dir: 'mantis-node', args: ['index.js'] },
     { name: 'office-mcp-server', dir: 'office-node', args: ['index.js'] },
@@ -114,7 +102,7 @@ servers.forEach(server => {
     const serverDir = path.join(rootDir, server.dir);
 
     const serverConfig = {
-        command: server.command || nodePath,
+        command: server.command || 'node',
         args: []
     };
 
@@ -144,16 +132,17 @@ console.log('\x1b[32mFile JSON generato con successo in: ' + settingsPath + '\x1
 // Generazione file settings.toml per GPT Codex
 const tomlLines = [];
 for (const [name, config] of Object.entries(settings.mcpServers)) {
-    tomlLines.push(`[mcp_servers."${name}"]`);
+    tomlLines.push(`[mcp_servers.${name}]`);
     tomlLines.push(`command = "${config.command.replace(/\\/g, '\\\\')}"`);
     const argsStr = config.args.map(a => `"${String(a).replace(/\\/g, '\\\\')}"`).join(', ');
     tomlLines.push(`args = [${argsStr}]`);
     
     if (config.env) {
-        const envEntries = Object.entries(config.env)
-            .map(([k, v]) => `"${k}" = "${String(v).replace(/\\/g, '\\\\')}"`)
-            .join(', ');
-        tomlLines.push(`env = { ${envEntries} }`);
+        tomlLines.push('');
+        tomlLines.push(`[mcp_servers.${name}.env]`);
+        for (const [k, v] of Object.entries(config.env)) {
+            tomlLines.push(`${k} = "${String(v).replace(/\\/g, '\\\\')}"`);
+        }
     }
     tomlLines.push('');
 }
