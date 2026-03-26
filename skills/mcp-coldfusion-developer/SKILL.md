@@ -25,6 +25,7 @@ Questo skill ottimizza sviluppo e debugging su stack ColdFusion/CFML integrando 
 ## Carica Riferimenti Solo Se Servono
 
 * [references/post-fix-checklist.md](references/post-fix-checklist.md) per una checklist rapida dopo la modifica e per la lettura proattiva dei log.
+* [references/core-client-override-pattern.md](references/core-client-override-pattern.md) quando devi estendere un componente `core` dal `client`, derivare il namespace dal path reale del core, o aggiornare la catena di factory corretta.
 
 ## Risoluzione Problemi
 
