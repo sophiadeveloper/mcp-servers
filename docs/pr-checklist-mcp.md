@@ -1,26 +1,20 @@
-# PR checklist MCP
+# PR Checklist MCP (Obbligatoria)
 
-Questa checklist aiuta a validare velocemente i server MCP prima di aprire una PR.
+Usare questa checklist in ogni PR che modifica server MCP, tool schema, skill o documentazione collegata.
 
-## Validazione schema tool
+## Check obbligatori
 
-Esegui il controllo ricorsivo degli `inputSchema`:
+- [ ] **Compatibilita' backward dei tool name**: i nomi dei tool esistenti restano invariati (salvo migrazione esplicita e documentata).
+- [ ] **Validazione schema input**: ogni campo `type: "array"` dichiara sempre `items` (anche per array annidati).
+- [ ] **Aggiornamento test e documentazione**: i test/smoke test rilevanti sono aggiornati ed e' stata aggiornata la documentazione locale.
+- [ ] **Verifica fallback/compatibilita' I/O**: `project_path` resta disponibile come fallback e `save_path` continua a funzionare senza regressioni.
+- [ ] **Rischio compatibilita' cross-host**: la PR indica esplicitamente il rischio/impatto su Codex, Copilot e client MCP con validazione schema severa.
+- [ ] **Nota riavvio server**: quando cambia codice MCP, la PR include una nota esplicita che richiede il riavvio del server.
 
-```bash
-node scripts/check-tool-schemas.js
-```
+## Nota operativa consigliata nella PR
 
-Lo script:
+Aggiungere una sezione breve, per esempio:
 
-- individua automaticamente i server `*-node/index.js` e `linter-node/src/index.ts`;
-- estrae e valuta ogni `inputSchema` dei tool;
-- segnala **errore** se trova nodi `type: "array"` senza `items`;
-- aggiunge controlli minimi extra:
-  - `type: "object"` senza `properties` (warning, salvo casi intenzionali con `additionalProperties: true` o `x_allow_empty_object: true`);
-  - `required` non coerente (`required` non-array, chiavi non stringa, chiavi non presenti in `properties`, duplicati);
-- stampa un report leggibile per file/tool;
-- termina con exit code non-zero in presenza di errori.
-
-## Uso in CI (opzionale)
-
-Puoi integrare lo stesso check nella pipeline PR come step bloccante.
+- **Compatibilita'**: Nessuna rottura backward dei tool name / oppure migrazione documentata.
+- **Cross-host risk**: Basso/Medio/Alto + motivazione.
+- **Restart richiesto**: Sì/No (Sì se e' cambiato codice MCP).
