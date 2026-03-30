@@ -8,10 +8,70 @@ import fs from "fs";
 import path from "path";
 
 const execAsync = util.promisify(exec);
+const SERVER_INSTRUCTIONS = [
+  "Questo server MCP espone utility Git per analisi e gestione conflitti su repository locali.",
+  "Usa sempre project_path per puntare alla root del repository target.",
+  "Preferisci prima i tool read-only (git_query, git_diff) e usa git_conflict_manager solo per operazioni di modifica esplicite.",
+  "Per client moderni vengono restituiti sia content testuale sia structuredContent; i client legacy possono usare solo content."
+].join(" ");
+
+const TOOL_METADATA = {
+  git_query: {
+    description: "Esplora lo stato e la storia del repository Git (Sola Lettura).",
+    annotations: {
+      title: "Git Query (Read-Only)",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true
+    }
+  },
+  git_diff: {
+    description: "Visualizza le differenze tra stati del repository.",
+    annotations: {
+      title: "Git Diff (Read-Only)",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true
+    }
+  },
+  git_conflict_manager: {
+    description: "Gestisce il ciclo di vita dei conflitti di merge e operazioni di scrittura.",
+    annotations: {
+      title: "Git Conflict Manager",
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false
+    }
+  }
+};
+
+function toLegacyText(value) {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
+}
+
+function makeSuccessResult({ text, structuredContent }) {
+  return {
+    content: [{ type: "text", text: toLegacyText(text) }],
+    structuredContent
+  };
+}
+
+function makeErrorResult(error, context = {}) {
+  return {
+    content: [{ type: "text", text: `❌ Errore: ${error.message}` }],
+    structuredContent: {
+      ok: false,
+      error: error.message,
+      context
+    },
+    isError: true
+  };
+}
 
 const server = new Server(
   { name: "git-node-manager", version: "3.2.0" },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS }
 );
 
 async function runGit(command, projectPath) {
@@ -38,7 +98,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "git_query",
-        description: "Esplora lo stato e la storia del repository Git (Sola Lettura).",
+        description: TOOL_METADATA.git_query.description,
+        annotations: TOOL_METADATA.git_query.annotations,
         inputSchema: {
           type: "object",
           properties: {
@@ -64,7 +125,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "git_diff",
-        description: "Visualizza le differenze tra stati del repository.",
+        description: TOOL_METADATA.git_diff.description,
+        annotations: TOOL_METADATA.git_diff.annotations,
         inputSchema: {
           type: "object",
           properties: {
@@ -86,7 +148,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "git_conflict_manager",
-        description: "Gestisce il ciclo di vita dei conflitti di merge e operazioni di scrittura.",
+        description: TOOL_METADATA.git_conflict_manager.description,
+        annotations: TOOL_METADATA.git_conflict_manager.annotations,
         inputSchema: {
           type: "object",
           properties: {
@@ -117,7 +180,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       switch (args.action) {
         case "status":
           const statusOut = await runGit("status -s", projectPath);
-          return { content: [{ type: "text", text: statusOut || "Clean." }] };
+          return makeSuccessResult({
+            text: statusOut || "Clean.",
+            structuredContent: { ok: true, tool: "git_query", action: "status", project_path: projectPath, output: statusOut || "Clean." }
+          });
 
         case "history":
           let limitFlag = args.max_count ? ` -n ${args.max_count}` : (!args.commit_range && !args.file_path && !args.search_text ? " -n 20" : "");
@@ -130,31 +196,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const commits = histOut.split('\n').filter(l => l.trim()).map(l => {
             const p = l.split('|'); return { hash: p[0], author: p[1], date: p[2], message: p.slice(3).join('|') };
           });
-          return { content: [{ type: "text", text: JSON.stringify(commits, null, 2) }] };
+          return makeSuccessResult({
+            text: commits,
+            structuredContent: { ok: true, tool: "git_query", action: "history", project_path: projectPath, commits }
+          });
 
         case "list_files":
           const rev = args.commit_ref || "HEAD";
           const filesOut = await runGit(`diff-tree --no-commit-id --name-only -r ${rev}`, projectPath);
-          return { content: [{ type: "text", text: filesOut || "Nessun cambiamento rilevato." }] };
+          return makeSuccessResult({
+            text: filesOut || "Nessun cambiamento rilevato.",
+            structuredContent: { ok: true, tool: "git_query", action: "list_files", project_path: projectPath, commit_ref: rev, output: filesOut || "" }
+          });
 
         case "commit_info":
           const infoRef = args.commit_ref || "HEAD";
           const infoOut = await runGit(`log -1 --format="%H^|^%h^|^%an^|^%ad^|^%s" --date=short ${infoRef}`, projectPath);
           const parts = infoOut.split('^|^');
-          return { content: [{ type: "text", text: JSON.stringify({ hash: parts[0], short_hash: parts[1], author: parts[2], date: parts[3], message: parts.slice(4).join('^|^') }, null, 2) }] };
+          const commit = { hash: parts[0], short_hash: parts[1], author: parts[2], date: parts[3], message: parts.slice(4).join('^|^') };
+          return makeSuccessResult({
+            text: commit,
+            structuredContent: { ok: true, tool: "git_query", action: "commit_info", project_path: projectPath, commit }
+          });
 
         case "blame":
           if (!args.file_path) throw new Error("file_path obbligatorio per blame.");
           let r = args.start_line ? `-L ${args.start_line},${args.end_line || args.start_line + 20}` : "";
           const blameOut = await runGit(`blame ${r} -e -n -w -- "${args.file_path}"`, projectPath);
-          return { content: [{ type: "text", text: blameOut }] };
+          return makeSuccessResult({
+            text: blameOut,
+            structuredContent: { ok: true, tool: "git_query", action: "blame", project_path: projectPath, file_path: args.file_path, output: blameOut }
+          });
 
         case "check_ancestor":
           try {
             await execAsync(`git merge-base --is-ancestor ${args.ancestor_commit} ${args.descendant_commit}`, { cwd: projectPath });
-            return { content: [{ type: "text", text: "true" }] };
+            return makeSuccessResult({
+              text: "true",
+              structuredContent: { ok: true, tool: "git_query", action: "check_ancestor", project_path: projectPath, is_ancestor: true }
+            });
           } catch (e) {
-            if (e.code === 1) return { content: [{ type: "text", text: "false" }] };
+            if (e.code === 1) {
+              return makeSuccessResult({
+                text: "false",
+                structuredContent: { ok: true, tool: "git_query", action: "check_ancestor", project_path: projectPath, is_ancestor: false }
+              });
+            }
             throw e;
           }
         default: throw new Error(`Azione non valida per git_query: ${args.action}`);
@@ -166,7 +253,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         case "working":
           const flags = args.cached ? "--cached" : "";
           const workOut = await runGit(`diff ${flags}`, projectPath);
-          return { content: [{ type: "text", text: workOut || "No diff." }] };
+          return makeSuccessResult({
+            text: workOut || "No diff.",
+            structuredContent: { ok: true, tool: "git_diff", action: "working", project_path: projectPath, output: workOut || "" }
+          });
 
         case "compare":
           const src = args.source || "HEAD";
@@ -175,13 +265,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const nameOnly = args.name_only ? "--name-only" : "";
           const compFilter = args.file_path ? ` -- "${args.file_path}"` : "";
           const compOut = await runGit(`diff ${nameOnly} ${tgt}...${src}${compFilter}`, projectPath);
-          return { content: [{ type: "text", text: compOut || `Nessuna differenza.` }] };
+          return makeSuccessResult({
+            text: compOut || "Nessuna differenza.",
+            structuredContent: { ok: true, tool: "git_diff", action: "compare", project_path: projectPath, source: src, target: tgt, output: compOut || "" }
+          });
 
         case "show":
           const hash = args.commit_hash || "HEAD";
           const showFilter = args.file_path ? ` -- "${args.file_path}"` : "";
           const showOut = await runGit(`show ${hash}${showFilter}`, projectPath);
-          return { content: [{ type: "text", text: showOut }] };
+          return makeSuccessResult({
+            text: showOut,
+            structuredContent: { ok: true, tool: "git_diff", action: "show", project_path: projectPath, commit_hash: hash, output: showOut }
+          });
 
         default: throw new Error(`Azione non valida per git_diff: ${args.action}`);
       }
@@ -191,7 +287,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       switch (args.action) {
         case "list":
           const confList = await runGit("diff --name-only --diff-filter=U", projectPath);
-          return { content: [{ type: "text", text: confList ? "File in conflitto:\n" + confList : "Nessun conflitto." }] };
+          return makeSuccessResult({
+            text: confList ? "File in conflitto:\n" + confList : "Nessun conflitto.",
+            structuredContent: { ok: true, tool: "git_conflict_manager", action: "list", project_path: projectPath, files: confList ? confList.split("\n").filter(Boolean) : [] }
+          });
 
         case "analyze":
           if (!args.file_path) throw new Error("file_path obbligatorio per analyze.");
@@ -202,21 +301,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (args.commit_hash) {
             const posixPath = args.file_path.replace(/\\/g, '/');
             const data = await runGit(`show ${args.commit_hash}:"${posixPath}"`, projectPath);
-            return { content: [{ type: "text", text: data }] };
+            return makeSuccessResult({
+              text: data,
+              structuredContent: { ok: true, tool: "git_conflict_manager", action: "read", project_path: projectPath, file_path: args.file_path, commit_hash: args.commit_hash, output: data }
+            });
           } else {
             const content = fs.readFileSync(path.join(projectPath, args.file_path), 'utf8');
-            return { content: [{ type: "text", text: content }] };
+            return makeSuccessResult({
+              text: content,
+              structuredContent: { ok: true, tool: "git_conflict_manager", action: "read", project_path: projectPath, file_path: args.file_path, output: content }
+            });
           }
 
         case "resolve":
           if (!args.file_path || args.resolved_content === undefined) throw new Error("file_path e resolved_content obbligatori.");
           fs.writeFileSync(path.join(projectPath, args.file_path), args.resolved_content, 'utf8');
-          return { content: [{ type: "text", text: `✅ File salvato: ${args.file_path}` }] };
+          return makeSuccessResult({
+            text: `✅ File salvato: ${args.file_path}`,
+            structuredContent: { ok: true, tool: "git_conflict_manager", action: "resolve", project_path: projectPath, file_path: args.file_path, saved: true }
+          });
 
         case "stage":
           if (!args.file_path) throw new Error("file_path obbligatorio per stage.");
           await runGit(`add "${args.file_path}"`, projectPath);
-          return { content: [{ type: "text", text: `✅ File aggiunto allo stage: ${args.file_path}` }] };
+          return makeSuccessResult({
+            text: `✅ File aggiunto allo stage: ${args.file_path}`,
+            structuredContent: { ok: true, tool: "git_conflict_manager", action: "stage", project_path: projectPath, file_path: args.file_path, staged: true }
+          });
 
         case "rebase_step":
           if (!args.rebase_action) throw new Error("rebase_action obbligatorio.");
@@ -225,12 +336,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             cmd = "commit --no-edit";
           }
           const rbOut = await runGit(cmd, projectPath);
-          return { content: [{ type: "text", text: rbOut || `Azione ${args.rebase_action} completata.` }] };
+          return makeSuccessResult({
+            text: rbOut || `Azione ${args.rebase_action} completata.`,
+            structuredContent: { ok: true, tool: "git_conflict_manager", action: "rebase_step", project_path: projectPath, rebase_action: args.rebase_action, output: rbOut || "" }
+          });
 
         case "restore":
           if (!args.file_path || !args.commit_hash) throw new Error("file_path e commit_hash obbligatori.");
           await runGit(`checkout ${args.commit_hash} -- "${args.file_path}"`, projectPath);
-          return { content: [{ type: "text", text: `✅ File ripristinato: ${args.file_path}` }] };
+          return makeSuccessResult({
+            text: `✅ File ripristinato: ${args.file_path}`,
+            structuredContent: { ok: true, tool: "git_conflict_manager", action: "restore", project_path: projectPath, file_path: args.file_path, commit_hash: args.commit_hash, restored: true }
+          });
 
         default: throw new Error(`Azione non valida per conflict_manager: ${args.action}`);
       }
@@ -238,7 +355,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     throw new Error(`Tool sconosciuto: ${name}`);
   } catch (error) {
-    return { content: [{ type: "text", text: `❌ Errore: ${error.message}` }], isError: true };
+    return makeErrorResult(error, { tool: name, action: args?.action, project_path: projectPath });
   }
 });
 
@@ -272,7 +389,18 @@ async function analyzeConflict(projectPath, filePath) {
       else if (block === 'incoming') current.incoming_content.push(line);
     }
   });
-  return { content: [{ type: "text", text: JSON.stringify({ file_path: filePath, conflict_count: conflicts.length, conflicts: conflicts }, null, 2) }] };
+  return makeSuccessResult({
+    text: { file_path: filePath, conflict_count: conflicts.length, conflicts },
+    structuredContent: {
+      ok: true,
+      tool: "git_conflict_manager",
+      action: "analyze",
+      project_path: projectPath,
+      file_path: filePath,
+      conflict_count: conflicts.length,
+      conflicts
+    }
+  });
 }
 
 const transport = new StdioServerTransport();
