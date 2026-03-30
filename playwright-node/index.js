@@ -331,6 +331,61 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
+        name: "browser_session",
+        description: "Condensed browser/session operations via action enum (phase 1 adapter).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              enum: [
+                "navigate",
+                "get_dom",
+                "screenshot",
+                "evaluate_js",
+                "annotate",
+                "click_by_id",
+                "export_state",
+                "load_state",
+                "get_network_errors",
+                "get_console_logs",
+                "switch_tab",
+                "list_frames",
+                "select_frame",
+                "read_downloaded_file"
+              ],
+              description: "Session-level action to execute."
+            },
+            url: { type: "string", description: "Used by action=navigate" },
+            path: { type: "string", description: "Used by action=screenshot" },
+            code: { type: "string", description: "Used by action=evaluate_js" },
+            id: { type: "number", description: "Used by action=click_by_id" },
+            filename: { type: "string", description: "Used by actions export_state/load_state" },
+            index: { type: "number", description: "Used by actions switch_tab/select_frame" }
+          },
+          required: ["action"],
+        },
+      },
+      {
+        name: "browser_interact",
+        description: "Condensed page interaction operations via action enum (phase 1 adapter).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              enum: ["click", "fill", "scroll", "hover", "press_key"],
+              description: "Interaction action to execute."
+            },
+            selector: { type: "string", description: "Used by click/fill/hover/press_key" },
+            value: { type: "string", description: "Used by action=fill" },
+            pixels: { type: "number", description: "Used by action=scroll" },
+            key: { type: "string", description: "Used by action=press_key" }
+          },
+          required: ["action"],
+        },
+      },
+      {
         name: "browser_navigate",
         description: "Navigates to a specific URL and waits for DOM content loaded.",
         inputSchema: {
@@ -525,353 +580,466 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
+async function executeLegacyTool(name, args) {
+  switch (name) {
+    case "browser_navigate": {
+      const url = String(args.url);
+      assertUrlAllowed(url);
+
+      activeFrame = null;
+      await removeAnnotations(page);
+      await page.goto(url, { waitUntil: WAIT_FOR_LOAD_STATE, timeout: NAVIGATION_TIMEOUT_MS });
+      await settlePage(page, { reason: "browser_navigate" });
+      const title = await page.title();
+      const currentUrl = page.url();
+      return {
+        content: [{ type: "text", text: `Navigazione completata. URL: ${currentUrl}, Titolo: ${title}` }],
+      };
+    }
+
+    case "browser_click": {
+      const selector = String(args.selector);
+      const target = getActiveTarget();
+      await removeAnnotations(target);
+      await waitForVisibleElement(selector, target);
+      await target.click(selector, { timeout: ACTION_TIMEOUT_MS });
+      await settlePage(target, { waitForNavigation: true, reason: `browser_click(${selector})` });
+      return {
+        content: [{ type: "text", text: `Click su selettore '${selector}' eseguito con successo.` }],
+      };
+    }
+
+    case "browser_fill": {
+      const selector = String(args.selector);
+      const value = String(args.value);
+      const target = getActiveTarget();
+      await removeAnnotations(target);
+      await waitForVisibleElement(selector, target);
+      await target.fill(selector, value, { timeout: ACTION_TIMEOUT_MS });
+      await settlePage(target, { reason: `browser_fill(${selector})` });
+      return {
+        content: [{ type: "text", text: `Testo inserito nel selettore '${selector}' con successo.` }],
+      };
+    }
+
+    case "browser_get_dom": {
+      const target = getActiveTarget();
+      const compactDOM = await target.evaluate(() => {
+        function getCleanOutline(node) {
+          if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.TEXT_NODE) return null;
+          if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent.trim();
+            return text ? text : null;
+          }
+
+          const t = node.tagName.toLowerCase();
+          if (["script", "style", "svg", "noscript", "meta", "link", "iframe"].includes(t)) return null;
+
+          const children = [];
+          for (let child of node.childNodes) {
+            const c = getCleanOutline(child);
+            if (c) children.push(c);
+          }
+
+          const isInteractive = ["a", "button", "input", "select", "textarea", "label"].includes(t);
+          const role = node.getAttribute("role");
+          const hasInteractiveRole = role && ["button", "link", "checkbox", "menuitem"].includes(role);
+
+          if (!isInteractive && !hasInteractiveRole && children.length === 0) return null;
+
+          let str = `<${t}`;
+          if (node.id) str += ` id="${node.id}"`;
+          if (isInteractive || hasInteractiveRole) {
+            Array.from(node.attributes).forEach(attr => {
+              if (["name", "type", "placeholder", "aria-label", "role"].includes(attr.name)) {
+                str += ` ${attr.name}="${attr.value}"`;
+              }
+            });
+          }
+          str += ">";
+
+          if (children.length === 1 && typeof children[0] === "string") {
+            str += children[0];
+          } else if (children.length > 0) {
+            str += "\n  " + children.map(c => typeof c === "string" ? c : c).join("\n").replace(/\n/g, "\n  ") + "\n";
+          }
+          return str + `</${t}>`;
+        }
+        return getCleanOutline(document.body);
+      });
+      return {
+        content: [{ type: "text", text: compactDOM || "Il DOM è vuoto o non estraibile." }],
+      };
+    }
+
+    case "browser_screenshot": {
+      const savePath = args && args.path ? String(args.path) : null;
+      const buffer = await page.screenshot({ fullPage: false });
+      const currentUrl = page.url();
+      const title = await page.title();
+      if (savePath) {
+        const { writeFileSync, mkdirSync } = await import("fs");
+        const { dirname } = await import("path");
+        mkdirSync(dirname(savePath), { recursive: true });
+        writeFileSync(savePath, buffer);
+      }
+      return {
+        content: [{
+          type: "image",
+          data: buffer.toString("base64"),
+          mimeType: "image/png"
+        }, {
+          type: "text",
+          text: `Screenshot catturato. URL: ${currentUrl}, Titolo: ${title}${savePath ? ` | Salvato: ${savePath}` : ""}`
+        }],
+      };
+    }
+
+    case "browser_evaluate_js": {
+      const code = String(args.code);
+      const target = getActiveTarget();
+      const result = await target.evaluate(code);
+      const resultStr = typeof result === "object" ? JSON.stringify(result, null, 2) : String(result);
+      return {
+        content: [{ type: "text", text: `Execution result:
+${resultStr}` }],
+      };
+    }
+
+    case "browser_annotate": {
+      const target = getActiveTarget();
+      await removeAnnotations(target);
+      await target.evaluate(() => {
+        let elements = document.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"], [role="checkbox"], [role="menuitem"]');
+        window.__elementMap = {};
+        let counter = 1;
+
+        elements.forEach(el => {
+          const rect = el.getBoundingClientRect();
+          const isVisible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden';
+          if (isVisible) {
+            window.__elementMap[counter] = el;
+            let label = document.createElement('div');
+            label.textContent = counter;
+            label.className = 'playwright-annotation';
+            label.style.position = 'absolute';
+            label.style.top = `${rect.top + window.scrollY}px`;
+            label.style.left = `${rect.left + window.scrollX}px`;
+            label.style.background = 'red';
+            label.style.color = 'white';
+            label.style.padding = '1px 4px';
+            label.style.fontSize = '11px';
+            label.style.fontWeight = 'bold';
+            label.style.zIndex = '999999';
+            label.style.pointerEvents = 'none';
+            label.style.borderRadius = '3px';
+            label.style.boxShadow = '0 0 2px black';
+            document.body.appendChild(label);
+            counter++;
+          }
+        });
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const buffer = await page.screenshot({ fullPage: false });
+
+      return {
+        content: [{
+          type: "image",
+          data: buffer.toString("base64"),
+          mimeType: "image/png"
+        }, {
+          type: "text",
+          text: "Etichette iniettate. Usa l'ID visibile nell'immagine con browser_click_by_id."
+        }],
+      };
+    }
+
+    case "browser_click_by_id": {
+      const id = Number(args.id);
+      const target = getActiveTarget();
+      const result = await target.evaluate((selectorId) => {
+        if (window.__elementMap && window.__elementMap[selectorId]) {
+          document.querySelectorAll('.playwright-annotation').forEach(e => e.remove());
+          window.__elementMap[selectorId].click();
+          return true;
+        }
+        return false;
+      }, id);
+
+      if (result) {
+        await settlePage(target, { waitForNavigation: true, reason: `browser_click_by_id(${id})` });
+        return {
+          content: [{ type: "text", text: `Elemento ${id} cliccato con successo.` }],
+        };
+      }
+
+      throw new Error(`Elemento con ID ${id} non trovato. Esegui prima browser_annotate.`);
+    }
+
+    case "browser_export_state": {
+      const filename = String(args.filename);
+      await context.storageState({ path: filename });
+      return {
+        content: [{ type: "text", text: `Browser state exported successfully to ${filename}` }],
+      };
+    }
+
+    case "browser_load_state": {
+      const filename = String(args.filename);
+      await ensureBrowser(filename);
+      return {
+        content: [{ type: "text", text: `Browser state loaded successfully from ${filename}. A new browser context is now active.` }],
+      };
+    }
+
+    case "browser_scroll": {
+      let pixels = args.pixels !== undefined ? Number(args.pixels) : 500;
+      const target = getActiveTarget();
+      await target.evaluate((px) => window.scrollBy(0, px), pixels);
+      return {
+        content: [{ type: "text", text: `Scrolled by ${pixels} pixels.` }],
+      };
+    }
+
+    case "browser_hover": {
+      const selector = String(args.selector);
+      const target = getActiveTarget();
+      await waitForVisibleElement(selector, target);
+      await target.hover(selector, { timeout: ACTION_TIMEOUT_MS });
+      return {
+        content: [{ type: "text", text: `Hovered over element matching '${selector}'.` }],
+      };
+    }
+
+    case "browser_press_key": {
+      const selector = String(args.selector);
+      const key = String(args.key);
+      const target = getActiveTarget();
+      await removeAnnotations(target);
+      await waitForVisibleElement(selector, target);
+      await target.press(selector, key, { timeout: ACTION_TIMEOUT_MS });
+      await settlePage(target, { waitForNavigation: true, reason: `browser_press_key(${selector}, ${key})` });
+      return {
+        content: [{ type: "text", text: `Pressed key '${key}' on element matching '${selector}'.` }],
+      };
+    }
+
+    case "browser_get_network_errors": {
+      return {
+        content: [{ type: "text", text: networkErrors.length > 0 ? networkErrors.join("\n") : "No network errors detected." }],
+      };
+    }
+
+    case "browser_get_console_logs": {
+      return {
+        content: [{ type: "text", text: consoleLogs.length > 0 ? consoleLogs.join("\n") : "No console errors detected." }],
+      };
+    }
+
+    case "browser_switch_tab": {
+      const index = Number(args.index);
+      if (index >= 0 && index < pages.length) {
+        page = pages[index];
+        activeFrame = null;
+        await page.bringToFront();
+        const title = await page.title();
+        return {
+          content: [{ type: "text", text: `Switched to tab ${index}. Active URL: ${page.url()}, Title: ${title}` }],
+        };
+      }
+
+      return {
+        content: [{ type: "text", text: `Invalid tab index ${index}. There are currently ${pages.length} tabs open (indexes 0 to ${pages.length - 1}).` }],
+        isError: true,
+      };
+    }
+
+    case "browser_list_frames": {
+      const frames = getFrameSummaries();
+      return {
+        content: [{
+          type: "text",
+          text: frames.length > 0
+            ? JSON.stringify(frames, null, 2)
+            : "No frames found in the active page."
+        }],
+      };
+    }
+
+    case "browser_select_frame": {
+      const index = Number(args.index);
+      const frames = page.frames();
+      if (index >= 0 && index < frames.length) {
+        activeFrame = frames[index];
+        await settlePage(activeFrame, { reason: `browser_select_frame(${index})` });
+        return {
+          content: [{
+            type: "text",
+            text: `Frame ${index} selected. URL: ${activeFrame.url()}${activeFrame === page.mainFrame() ? " | Main frame" : ""}`
+          }],
+        };
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `Invalid frame index ${index}. Use browser_list_frames to inspect available frames.`
+        }],
+        isError: true,
+      };
+    }
+
+    case "browser_read_downloaded_file": {
+      if (!lastDownloadBuffer) {
+        return {
+          content: [{ type: "text", text: "Nessun file scaricato in questa sessione." }],
+          isError: true,
+        };
+      }
+      const textContent = lastDownloadBuffer.toString("utf-8");
+      return {
+        content: [{ type: "text", text: `[FILE NAME]: ${lastDownloadFilename}
+--- CONTENT ---
+${textContent}
+---------------` }],
+      };
+    }
+
+    default:
+      return {
+        content: [{ type: "text", text: `Tool ${name} non implementato ancora.` }],
+        isError: true,
+      };
+  }
+}
+
+const SESSION_ACTION_TO_LEGACY = {
+  navigate: { legacyTool: "browser_navigate", pickArgs: args => ({ url: args.url }) },
+  get_dom: { legacyTool: "browser_get_dom", pickArgs: () => ({}) },
+  screenshot: { legacyTool: "browser_screenshot", pickArgs: args => ({ path: args.path }) },
+  evaluate_js: { legacyTool: "browser_evaluate_js", pickArgs: args => ({ code: args.code }) },
+  annotate: { legacyTool: "browser_annotate", pickArgs: () => ({}) },
+  click_by_id: { legacyTool: "browser_click_by_id", pickArgs: args => ({ id: args.id }) },
+  export_state: { legacyTool: "browser_export_state", pickArgs: args => ({ filename: args.filename }) },
+  load_state: { legacyTool: "browser_load_state", pickArgs: args => ({ filename: args.filename }) },
+  get_network_errors: { legacyTool: "browser_get_network_errors", pickArgs: () => ({}) },
+  get_console_logs: { legacyTool: "browser_get_console_logs", pickArgs: () => ({}) },
+  switch_tab: { legacyTool: "browser_switch_tab", pickArgs: args => ({ index: args.index }) },
+  list_frames: { legacyTool: "browser_list_frames", pickArgs: () => ({}) },
+  select_frame: { legacyTool: "browser_select_frame", pickArgs: args => ({ index: args.index }) },
+  read_downloaded_file: { legacyTool: "browser_read_downloaded_file", pickArgs: () => ({}) }
+};
+
+const INTERACT_ACTION_TO_LEGACY = {
+  click: { legacyTool: "browser_click", pickArgs: args => ({ selector: args.selector }) },
+  fill: { legacyTool: "browser_fill", pickArgs: args => ({ selector: args.selector, value: args.value }) },
+  scroll: { legacyTool: "browser_scroll", pickArgs: args => ({ pixels: args.pixels }) },
+  hover: { legacyTool: "browser_hover", pickArgs: args => ({ selector: args.selector }) },
+  press_key: { legacyTool: "browser_press_key", pickArgs: args => ({ selector: args.selector, key: args.key }) }
+};
+
+const LEGACY_TO_CONDENSED = {
+  browser_navigate: { tool: "browser_session", action: "navigate" },
+  browser_get_dom: { tool: "browser_session", action: "get_dom" },
+  browser_screenshot: { tool: "browser_session", action: "screenshot" },
+  browser_evaluate_js: { tool: "browser_session", action: "evaluate_js" },
+  browser_annotate: { tool: "browser_session", action: "annotate" },
+  browser_click_by_id: { tool: "browser_session", action: "click_by_id" },
+  browser_export_state: { tool: "browser_session", action: "export_state" },
+  browser_load_state: { tool: "browser_session", action: "load_state" },
+  browser_get_network_errors: { tool: "browser_session", action: "get_network_errors" },
+  browser_get_console_logs: { tool: "browser_session", action: "get_console_logs" },
+  browser_switch_tab: { tool: "browser_session", action: "switch_tab" },
+  browser_list_frames: { tool: "browser_session", action: "list_frames" },
+  browser_select_frame: { tool: "browser_session", action: "select_frame" },
+  browser_read_downloaded_file: { tool: "browser_session", action: "read_downloaded_file" },
+  browser_click: { tool: "browser_interact", action: "click" },
+  browser_fill: { tool: "browser_interact", action: "fill" },
+  browser_scroll: { tool: "browser_interact", action: "scroll" },
+  browser_hover: { tool: "browser_interact", action: "hover" },
+  browser_press_key: { tool: "browser_interact", action: "press_key" }
+};
+
+function resolveToolInvocation(name, args = {}) {
+  if (name === "browser_session") {
+    const action = String(args.action || "");
+    const mapping = SESSION_ACTION_TO_LEGACY[action];
+    if (!mapping) {
+      throw new Error(`Azione browser_session non supportata: ${action}`);
+    }
+
+    return {
+      resolvedName: mapping.legacyTool,
+      resolvedArgs: mapping.pickArgs(args),
+      adapter: { source: "condensed", entryTool: name, action, legacyTool: mapping.legacyTool }
+    };
+  }
+
+  if (name === "browser_interact") {
+    const action = String(args.action || "");
+    const mapping = INTERACT_ACTION_TO_LEGACY[action];
+    if (!mapping) {
+      throw new Error(`Azione browser_interact non supportata: ${action}`);
+    }
+
+    return {
+      resolvedName: mapping.legacyTool,
+      resolvedArgs: mapping.pickArgs(args),
+      adapter: { source: "condensed", entryTool: name, action, legacyTool: mapping.legacyTool }
+    };
+  }
+
+  const legacyMapping = LEGACY_TO_CONDENSED[name];
+  if (legacyMapping) {
+    return {
+      resolvedName: name,
+      resolvedArgs: args,
+      adapter: {
+        source: "legacy",
+        entryTool: name,
+        action: legacyMapping.action,
+        legacyTool: name,
+        condensedTool: legacyMapping.tool
+      }
+    };
+  }
+
+  return { resolvedName: name, resolvedArgs: args, adapter: null };
+}
+
+function attachStructuredOutput(response, adapter) {
+  if (!adapter || adapter.source !== "condensed") {
+    return response;
+  }
+
+  const textEntry = response.content?.find(item => item.type === "text");
+  return {
+    ...response,
+    structuredContent: {
+      schemaVersion: "2026-03-30",
+      status: response.isError ? "error" : "ok",
+      adapter: {
+        entryTool: adapter.entryTool,
+        action: adapter.action,
+        legacyTool: adapter.legacyTool
+      },
+      message: textEntry?.text || ""
+    }
+  };
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  // Reset the hibernation timer on any interaction
   resetIdleTimer();
 
-  // We will ensure the browser runs before any tool is executed (except maybe safe ones, but it's simpler this way)
   await ensureBrowser();
 
-  const { name, arguments: args } = request.params;
+  const { name, arguments: args = {} } = request.params;
 
   try {
-    switch (name) {
-      case "browser_navigate": {
-        const url = String(args.url);
-        assertUrlAllowed(url);
-
-        activeFrame = null;
-        await removeAnnotations(page);
-        await page.goto(url, { waitUntil: WAIT_FOR_LOAD_STATE, timeout: NAVIGATION_TIMEOUT_MS });
-        await settlePage(page, { reason: "browser_navigate" });
-        const title = await page.title();
-        const currentUrl = page.url();
-        return {
-          content: [{ type: "text", text: `Navigazione completata. URL: ${currentUrl}, Titolo: ${title}` }],
-        };
-      }
-
-      case "browser_click": {
-        const selector = String(args.selector);
-        const target = getActiveTarget();
-        await removeAnnotations(target);
-        await waitForVisibleElement(selector, target);
-        await target.click(selector, { timeout: ACTION_TIMEOUT_MS });
-        await settlePage(target, { waitForNavigation: true, reason: `browser_click(${selector})` });
-        return {
-          content: [{ type: "text", text: `Click su selettore '${selector}' eseguito con successo.` }],
-        };
-      }
-
-      case "browser_fill": {
-        const selector = String(args.selector);
-        const value = String(args.value);
-        const target = getActiveTarget();
-        await removeAnnotations(target);
-        await waitForVisibleElement(selector, target);
-        await target.fill(selector, value, { timeout: ACTION_TIMEOUT_MS });
-        await settlePage(target, { reason: `browser_fill(${selector})` });
-        return {
-          content: [{ type: "text", text: `Testo inserito nel selettore '${selector}' con successo.` }],
-        };
-      }
-
-      case "browser_get_dom": {
-        // Extracts a compact DOM structure
-        const target = getActiveTarget();
-        const compactDOM = await target.evaluate(() => {
-          function getCleanOutline(node) {
-            // Skip invisible or irrelevant elements
-            if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.TEXT_NODE) return null;
-            if (node.nodeType === Node.TEXT_NODE) {
-              const text = node.textContent.trim();
-              return text ? text : null;
-            }
-
-            const t = node.tagName.toLowerCase();
-            if (['script', 'style', 'svg', 'noscript', 'meta', 'link', 'iframe'].includes(t)) return null;
-
-            const children = [];
-            for (let child of node.childNodes) {
-              const c = getCleanOutline(child);
-              if (c) children.push(c);
-            }
-
-            // Important UI elements to keep
-            const isInteractive = ['a', 'button', 'input', 'select', 'textarea', 'label'].includes(t);
-            const role = node.getAttribute('role');
-            const hasInteractiveRole = role && ['button', 'link', 'checkbox', 'menuitem'].includes(role);
-
-            // If it's just a structural element with no children, ignore it
-            if (!isInteractive && !hasInteractiveRole && children.length === 0) return null;
-
-            // Create compact representation
-            let str = `<${t}`;
-            if (node.id) str += ` id="${node.id}"`;
-            if (isInteractive || hasInteractiveRole) {
-              // Basic identifiable attributes for targeting
-              Array.from(node.attributes).forEach(attr => {
-                if (['name', 'type', 'placeholder', 'aria-label', 'role'].includes(attr.name)) {
-                  str += ` ${attr.name}="${attr.value}"`;
-                }
-              });
-            }
-            str += '>';
-
-            if (children.length === 1 && typeof children[0] === 'string') {
-              str += children[0];
-            } else if (children.length > 0) {
-              str += '\n  ' + children.map(c => typeof c === 'string' ? c : c).join('\n').replace(/\n/g, '\n  ') + '\n';
-            }
-            return str + `</${t}>`;
-          }
-          return getCleanOutline(document.body);
-        });
-        return {
-          content: [{ type: "text", text: compactDOM || "Il DOM è vuoto o non estraibile." }],
-        };
-      }
-
-      case "browser_screenshot": {
-        const savePath = args && args.path ? String(args.path) : null;
-        const buffer = await page.screenshot({ fullPage: false });
-        const currentUrl = page.url();
-        const title = await page.title();
-        if (savePath) {
-          const { writeFileSync, mkdirSync } = await import("fs");
-          const { dirname } = await import("path");
-          mkdirSync(dirname(savePath), { recursive: true });
-          writeFileSync(savePath, buffer);
-        }
-        return {
-          content: [{
-            type: "image",
-            data: buffer.toString("base64"),
-            mimeType: "image/png"
-          }, {
-            type: "text",
-            text: `Screenshot catturato. URL: ${currentUrl}, Titolo: ${title}${savePath ? ` | Salvato: ${savePath}` : ''}`
-          }],
-        };
-      }
-
-      case "browser_evaluate_js": {
-        const code = String(args.code);
-        const target = getActiveTarget();
-        const result = await target.evaluate(code);
-        const resultStr = typeof result === "object" ? JSON.stringify(result, null, 2) : String(result);
-        return {
-          content: [{ type: "text", text: `Execution result:\n${resultStr}` }],
-        };
-      }
-
-      case "browser_annotate": {
-        const target = getActiveTarget();
-        await removeAnnotations(target);
-        await target.evaluate(() => {
-          let elements = document.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"], [role="checkbox"], [role="menuitem"]');
-          window.__elementMap = {};
-          let counter = 1;
-
-          elements.forEach(el => {
-            const rect = el.getBoundingClientRect();
-            // Check if visible
-            const isVisible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden';
-            if (isVisible) {
-              window.__elementMap[counter] = el;
-              let label = document.createElement('div');
-              label.textContent = counter;
-              label.className = 'playwright-annotation';
-              label.style.position = 'absolute';
-              label.style.top = `${rect.top + window.scrollY}px`;
-              label.style.left = `${rect.left + window.scrollX}px`;
-              label.style.background = 'red';
-              label.style.color = 'white';
-              label.style.padding = '1px 4px';
-              label.style.fontSize = '11px';
-              label.style.fontWeight = 'bold';
-              label.style.zIndex = '999999';
-              label.style.pointerEvents = 'none';
-              label.style.borderRadius = '3px';
-              label.style.boxShadow = '0 0 2px black';
-              document.body.appendChild(label);
-              counter++;
-            }
-          });
-        });
-
-        // Wait a tiny bit for rendering
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const buffer = await page.screenshot({ fullPage: false });
-
-        return {
-          content: [{
-            type: "image",
-            data: buffer.toString("base64"),
-            mimeType: "image/png"
-          }, {
-            type: "text",
-            text: "Etichette iniettate. Usa l'ID visibile nell'immagine con browser_click_by_id."
-          }],
-        };
-      }
-
-      case "browser_click_by_id": {
-        const id = Number(args.id);
-        const target = getActiveTarget();
-        const result = await target.evaluate((selectorId) => {
-          if (window.__elementMap && window.__elementMap[selectorId]) {
-            // Rimuoviamo prima le annotazioni che potrebbero bloccare il click se pointerEvents:none non funziona altrove o per pulizia
-            document.querySelectorAll('.playwright-annotation').forEach(e => e.remove());
-            window.__elementMap[selectorId].click();
-            return true;
-          }
-          return false;
-        }, id);
-
-        if (result) {
-          await settlePage(target, { waitForNavigation: true, reason: `browser_click_by_id(${id})` });
-          return {
-            content: [{ type: "text", text: `Elemento ${id} cliccato con successo.` }],
-          };
-        } else {
-          throw new Error(`Elemento con ID ${id} non trovato. Esegui prima browser_annotate.`);
-        }
-      }
-
-      case "browser_export_state": {
-        const filename = String(args.filename);
-        await context.storageState({ path: filename });
-        return {
-          content: [{ type: "text", text: `Browser state exported successfully to ${filename}` }],
-        };
-      }
-
-      case "browser_load_state": {
-        const filename = String(args.filename);
-        // Force re-initialization of context with the state file
-        await ensureBrowser(filename);
-        return {
-          content: [{ type: "text", text: `Browser state loaded successfully from ${filename}. A new browser context is now active.` }],
-        };
-      }
-
-      case "browser_scroll": {
-        let pixels = args.pixels !== undefined ? Number(args.pixels) : 500;
-        const target = getActiveTarget();
-        await target.evaluate((px) => window.scrollBy(0, px), pixels);
-        return {
-          content: [{ type: "text", text: `Scrolled by ${pixels} pixels.` }],
-        };
-      }
-
-      case "browser_hover": {
-        const selector = String(args.selector);
-        const target = getActiveTarget();
-        await waitForVisibleElement(selector, target);
-        await target.hover(selector, { timeout: ACTION_TIMEOUT_MS });
-        return {
-          content: [{ type: "text", text: `Hovered over element matching '${selector}'.` }],
-        };
-      }
-
-      case "browser_press_key": {
-        const selector = String(args.selector);
-        const key = String(args.key);
-        const target = getActiveTarget();
-        await removeAnnotations(target);
-        await waitForVisibleElement(selector, target);
-        await target.press(selector, key, { timeout: ACTION_TIMEOUT_MS });
-        await settlePage(target, { waitForNavigation: true, reason: `browser_press_key(${selector}, ${key})` });
-        return {
-          content: [{ type: "text", text: `Pressed key '${key}' on element matching '${selector}'.` }],
-        };
-      }
-
-      case "browser_get_network_errors": {
-        return {
-          content: [{ type: "text", text: networkErrors.length > 0 ? networkErrors.join('\n') : "No network errors detected." }],
-        };
-      }
-
-      case "browser_get_console_logs": {
-        return {
-          content: [{ type: "text", text: consoleLogs.length > 0 ? consoleLogs.join('\n') : "No console errors detected." }],
-        };
-      }
-
-      case "browser_switch_tab": {
-        const index = Number(args.index);
-        if (index >= 0 && index < pages.length) {
-          page = pages[index];
-          activeFrame = null;
-          await page.bringToFront();
-          const title = await page.title();
-          return {
-            content: [{ type: "text", text: `Switched to tab ${index}. Active URL: ${page.url()}, Title: ${title}` }],
-          };
-        } else {
-          return {
-            content: [{ type: "text", text: `Invalid tab index ${index}. There are currently ${pages.length} tabs open (indexes 0 to ${pages.length - 1}).` }],
-            isError: true,
-          };
-        }
-      }
-
-      case "browser_list_frames": {
-        const frames = getFrameSummaries();
-        return {
-          content: [{
-            type: "text",
-            text: frames.length > 0
-              ? JSON.stringify(frames, null, 2)
-              : "No frames found in the active page."
-          }],
-        };
-      }
-
-      case "browser_select_frame": {
-        const index = Number(args.index);
-        const frames = page.frames();
-        if (index >= 0 && index < frames.length) {
-          activeFrame = frames[index];
-          await settlePage(activeFrame, { reason: `browser_select_frame(${index})` });
-          return {
-            content: [{
-              type: "text",
-              text: `Frame ${index} selected. URL: ${activeFrame.url()}${activeFrame === page.mainFrame() ? " | Main frame" : ""}`
-            }],
-          };
-        }
-
-        return {
-          content: [{
-            type: "text",
-            text: `Invalid frame index ${index}. Use browser_list_frames to inspect available frames.`
-          }],
-          isError: true,
-        };
-      }
-
-      case "browser_read_downloaded_file": {
-        if (!lastDownloadBuffer) {
-          return {
-            content: [{ type: "text", text: "Nessun file scaricato in questa sessione." }],
-            isError: true,
-          };
-        }
-        const textContent = lastDownloadBuffer.toString('utf-8');
-        return {
-          content: [{ type: "text", text: `[FILE NAME]: ${lastDownloadFilename}\n--- CONTENT ---\n${textContent}\n---------------` }],
-        };
-      }
-
-      default:
-        return {
-          content: [{ type: "text", text: `Tool ${name} non implementato ancora.` }],
-          isError: true,
-        };
-    }
+    const { resolvedName, resolvedArgs, adapter } = resolveToolInvocation(name, args);
+    const executionResult = await executeLegacyTool(resolvedName, resolvedArgs || {});
+    return attachStructuredOutput(executionResult, adapter);
   } catch (error) {
     return {
       content: [{ type: "text", text: `Errore durante l'esecuzione di ${name}: ${error.message}` }],
