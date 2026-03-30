@@ -4,6 +4,7 @@
 
 * Conferma il `project_path` e riusalo per tutti i tool che dipendono dal contesto locale.
 * Verifica se il task richiede output finale tecnico, documentale o visivo.
+* Se il task e analitico e parte da ticket, documento, allegato o fonti miste, valuta subito `mcp-technical-analyst` come skill primario.
 * Decidi qual e il punto di validazione finale: query, log, UI, file generato o ticket aggiornato.
 
 ## Durante Il Lavoro
@@ -19,3 +20,4 @@
 * Eseguire query senza aver verificato schema o documentazione di dominio.
 * Testare la UI senza controllare console, network o frame attivo.
 * Aggiornare file o ticket ma non riallineare la documentazione indicizzata.
+* Usare uno skill specialistico puro quando il problema reale e una ricostruzione tecnica cross-ticket, cross-repo o cross-db.

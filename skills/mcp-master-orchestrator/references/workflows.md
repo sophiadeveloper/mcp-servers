@@ -2,6 +2,16 @@
 
 Usa questo riferimento quando il task richiede una sequenza esplicita di piu skill.
 
+## Analisi Tecnica Multi-Sorgente
+
+1. `mcp-technical-analyst`: imposta intake, fonti, deliverable e gap aperti.
+2. `mcp-git-mantis-workflow`: leggi ticket, note, allegati e commit correlati.
+3. `mcp-docs-navigator`: recupera documentazione interna e shelf rilevanti.
+4. `mcp-database-expert`: verifica schema e dati reali sugli ambienti necessari.
+5. `mcp-coldfusion-developer`: controlla codice CFML e log applicativi se il dominio lo richiede.
+6. `mcp-browser-automation`: usa Playwright solo se serve una prova funzionale o browser-side.
+7. `mcp-docs-navigator`: indicizza i documenti finali se devono restare ricercabili.
+
 ## Fix Regressione Con Effetto Su DB E UI
 
 1. `mcp-docs-navigator`: recupera documentazione e tag rilevanti.

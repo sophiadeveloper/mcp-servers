@@ -1,0 +1,39 @@
+{
+  "skill_name": "mcp-technical-analyst",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Parti dal ticket Mantis 0456673, considera anche un repo platform esterno e un repo cliente esterno alla workspace, controlla la documentazione interna e confronta anche il DB QA se quello di dev non basta. Voglio un documento requisiti, uno stato dell'arte e un'analisi tecnica finale in Markdown.",
+      "expected_output": "Analisi multi-sorgente che usa ticket, repo esterni, documentazione e DB, con piu deliverable .md ben separati e con evidenze verificabili.",
+      "files": [],
+      "expectations": [
+        "Usa fonti Mantis, Git, Docs e SQL senza fermarsi troppo presto a una sola sorgente",
+        "Separa i fatti osservati dalle inferenze",
+        "Produce deliverable Markdown strutturati e riusabili",
+        "Fa domande solo se manca un riferimento non scopribile"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Analizza questo documento DOCX con allegati tecnici e dimmi cosa manca per completare lo sviluppo. Se nel documento compaiono ticket, commit, tabelle o ambienti, apri i filoni necessari e chiudi con una gap analysis e un piano di completamento.",
+      "expected_output": "Analisi document-first che parte dal file, espande i riferimenti tecnici trovati e restituisce un dossier tecnico con gap analysis finale.",
+      "files": [],
+      "expectations": [
+        "Parte davvero dal documento e ne estrae i riferimenti tecnici",
+        "Attiva solo i filoni necessari invece di fare esplorazione dispersiva",
+        "Conclude con gap analysis e passi operativi"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Confronta repo A, repo B e il DB QA per capire perche una funzione risulta configurata ma non testabile. Se da codice e dati non basta, usa anche il browser per una verifica funzionale, ma solo se necessario. Voglio un report tecnico finale con rischi, assunzioni e raccomandazioni.",
+      "expected_output": "Analisi comparativa cross-repo e cross-db che usa Playwright solo se serve davvero, e produce un report finale con rischi e raccomandazioni.",
+      "files": [],
+      "expectations": [
+        "Non usa Playwright in automatico se l'analisi e gia chiudibile con altre fonti",
+        "Confronta in modo esplicito repo, dati e configurazione",
+        "Include rischi, assunzioni e raccomandazioni finali"
+      ]
+    }
+  ]
+}
