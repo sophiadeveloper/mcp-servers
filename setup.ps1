@@ -7,14 +7,6 @@ Write-Host "--- Aggiornamento npm all'ultima versione ---" -ForegroundColor Cyan
 npm install -g npm@latest --no-fund
 npm -v
 
-Write-Host "--- Verifica file .env ---" -ForegroundColor Cyan
-$rootEnv = Join-Path $PSScriptRoot ".env"
-$rootEnvEx = Join-Path $PSScriptRoot ".env.example"
-if (-not (Test-Path $rootEnv) -and (Test-Path $rootEnvEx)) {
-    Write-Host "Creazione file .env da .env.example..." -ForegroundColor Yellow
-    Copy-Item $rootEnvEx $rootEnv
-}
-
 Write-Host "`n--- Inizio installazione dipendenze ---" -ForegroundColor Cyan
 
 foreach ($folder in $packageFolders) {
