@@ -1,8 +1,8 @@
 # Specifica tecnica per Codex — potenziamento MCP + Skills nel repository `sophiadeveloper/mcp-servers`
 
-Versione: 2026-03-30  
-Target: Codex CLI / IDE extension / Codex app  
-Ambito: evoluzione incrementale dell'ecosistema MCP + skills per sviluppo agentico  
+Versione: 2026-03-30
+Target: Codex CLI / IDE extension / Codex app
+Ambito: evoluzione incrementale dell'ecosistema MCP + skills per sviluppo agentico
 Lingua operativa: italiano
 
 ## 1. Obiettivo del documento
@@ -532,6 +532,12 @@ Usare `git-node` come server pilota per introdurre le convenzioni moderne senza 
 - aggiungere `instructions` all'inizializzazione
 - supportare `roots` come alternativa a `project_path`
 - aggiungere test su tool read-only vs write
+- aggiungere `git_query action: "repo_info"` con repository top-level, branch, upstream, HEAD e stato di operazioni in corso (`rebase`, `merge`, `cherry-pick`, `bisect`)
+- aggiungere `git_query action: "rebase_status"` con commit in replay, todo rimanente, file in conflitto e next step suggerito
+- estendere `git_diff action: "compare"` con selezione esplicita `two_dot` / `three_dot` e opzione `stat`
+- aggiungere `git_diff action: "range_diff"` per confronto tra serie di commit originaria e serie riscritta dopo rebase
+- aggiungere `git_conflict_manager action: "list_detailed"` con metadati su tipo di conflitto, ours/base/theirs, marker, encoding e BOM
+- restringere `rebase_step` a `continue`, `skip`, `abort`, eliminando fallback impliciti rischiosi come `commit --no-edit`
 
 ### Note di compatibilita'
 
@@ -542,6 +548,9 @@ Non cambiare nomi dei tool nella prima PR, salvo motivazione forte.
 - un client esistente continua a usare i tool attuali
 - un client moderno riceve piu' metadati utili
 - output machine-readable disponibile almeno per `status`, `history`, `compare`, `list`
+- un agente puo' capire stato repo e stato rebase senza shell generica
+- i confronti Git usati nei rebase sono semantici ed espliciti
+- `rebase_step` non contiene fallback write impliciti
 
 ## Milestone 2 — `docs-node` come primo server resource-native
 
@@ -638,6 +647,9 @@ Rendere le skill principali piu' modulari, testabili e misurabili, riflettendo l
 - definire benchmark qualitativo minimo
 - promuovere `mcp-technical-analyst` a riferimento principale per le eval dei task analitici multi-sorgente
 - allineare `mcp-master-orchestrator` al ruolo di router/coordinatore e non di intake universale
+- aggiornare `mcp-git-mantis-workflow` con sezioni dedicate a `rebase preflight`, `semantic conflicts` e `post-rebase verification`
+- aggiungere una reference `references/rebase-playbook.md` con pattern per label, `gr*.cfm`, state machine e stop condition per review umana
+- aggiornare `mcp-coldfusion-developer` con una regola esplicita: in audit usare `lint_code` senza fix; usare `fix: true` solo in remediation
 
 ### Suite minima di eval da garantire
 
@@ -655,6 +667,14 @@ Per `mcp-master-orchestrator`:
 - routing corretto verso `mcp-technical-analyst` sui task analitici
 - routing corretto verso skill specialistica sui task mono-dominio
 - uso limitato dei sidecar per fase
+
+Per il filone Git/Rebase:
+
+- rebase preflight
+- semantic conflict analysis
+- confronto con target branch vs branch sorgente originale
+- post-rebase verification
+- casi in cui fermarsi per review umana
 
 ### Criteri di accettazione
 
@@ -682,7 +702,126 @@ Usare Codex in modo piu' disciplinato sui task complessi.
 - l'uso dei subagent riduce il lavoro manuale su task di audit/review
 - i custom agent non sono generici, ma veramente specializzati
 
-## Milestone 7 — packaging e distribuzione
+## Milestone 7 — Safe Project Filesystem MCP (`projectfs-node`)
+
+### Obiettivo
+
+Realizzare un MCP server TypeScript/Node.js **read-only, cross-platform e whitelist-constrained** da usare come alternativa sicura ai fallback shell per lettura file e navigazione del progetto in Codex e Copilot in VS Code, soprattutto quando le funzioni integrate dell'IDE non sono disponibili o non sono sufficienti.
+
+### Ruolo architetturale
+
+`projectfs-node` non sostituisce:
+
+- `git-node` per stato/storia/confronti Git
+- `docs-node` per indicizzazione e ricerca documentale
+- `office-node` per parsing/esportazione Office e PDF
+
+Fornisce invece un livello infrastrutturale dedicato a:
+
+- lettura sicura di file di progetto
+- navigazione directory controllata
+- ricerca testuale controllata
+- metadata filesystem
+- lettura batch limitata di piu' file
+
+### Tool minimi richiesti
+
+Per questo server si accetta una **eccezione motivata** al pattern repository-wide basato su `action`: sono preferibili tool separati e schema semplici, per compatibilita' con client MCP rigorosi e per chiarezza semantica.
+
+Tool minimi:
+
+- `read_file(path, startLine?, endLine?, maxBytes?)`
+- `list_dir(path, depth?, include?, exclude?, includeHidden?)`
+- `grep_files(root, pattern, include?, exclude?, caseSensitive?, maxResults?)`
+- `stat(path)`
+- opzionale ma fortemente consigliato: `read_many(paths[], maxBytesPerFile?)`
+
+### Principi e vincoli di sicurezza
+
+- nessuna scrittura sul filesystem del progetto
+- nessun side effect
+- accesso consentito solo a target finali che ricadono in `allowedRoots`
+- canonicalizzazione obbligatoria del path prima di ogni accesso
+- prevenzione di path traversal (`../`, mixed separators, escape via link)
+- comportamento esplicito per symlink/junction:
+  - risolvere il target reale
+  - consentire l'accesso solo se il target finale resta dentro whitelist
+  - rifiutare target esterni
+- bloccare di default directory rumorose o costose, configurabili:
+  - `.git`, `node_modules`, `vendor`, `dist`, `build`, `bin`, `obj`
+
+### Configurazione minima attesa
+
+Supportare file config dedicato + override via env. Campi minimi:
+
+- `allowedRoots`
+- `blockedGlobs`
+- `blockedDirs`
+- `followLinks` (meglio come policy enum: `deny`, `allow-within-whitelist`, `report-only`)
+- `maxFileBytes`
+- `maxSearchResults`
+- `maxDepth`
+- `searchTimeoutMs`
+
+Fornire esempi di configurazione per Windows e Linux.
+
+### Compatibilita' cross-platform
+
+Il server deve essere testato su Windows e Linux, con particolare attenzione a:
+
+- separatori Windows/POSIX
+- path relativi e assoluti
+- case sensitivity dove applicabile
+- symlink Linux
+- junction e symlink Windows
+- differenze di comportamento di `realpath`
+
+Normalizzazione, canonicalizzazione e containment vanno astratti in un modulo dedicato con test mirati.
+
+### Testing richiesto
+
+Unit test obbligatori su:
+
+- path normalization
+- authorization / containment
+- traversal prevention
+- symlink handling
+- junction handling dove applicabile
+- blocked dirs / blocked globs
+- rifiuto di target esterni alla whitelist
+
+Integration test obbligatori su:
+
+- `read_file`
+- `list_dir`
+- `grep_files`
+- `stat`
+- `read_many` se implementato
+
+Aggiungere matrix GitHub Actions su:
+
+- `ubuntu-latest`
+- `windows-latest`
+
+### Deliverable
+
+- nuova cartella `projectfs-node/`
+- README con setup locale, esempi config e limiti noti
+- test unit e integration
+- workflow GitHub Actions cross-platform
+- aggiornamento dei generatori di configurazione host-specifica
+- eventuale sezione `AGENTS.md` o README con linee guida per review Codex
+
+### Criteri di accettazione
+
+- nessuna scrittura sul filesystem del progetto
+- accessi fuori whitelist sempre negati
+- symlink/junction ammessi solo se risolti dentro whitelist
+- test verdi su Linux e Windows
+- README sufficiente per setup locale e integrazione con Codex/Copilot
+- schema MCP validi e compatibili con client rigorosi
+
+## Milestone 8 — packaging e distribuzione
 
 ### Obiettivo
 
@@ -710,6 +849,7 @@ Standardizzare packaging, configurazione host e, dove opportuno, distribuzione r
 - `office-node`
 - skill `mcp-technical-analyst`
 - skill `mcp-master-orchestrator`
+- hardening di compatibilita' MCP per host rigorosi (Codex/Copilot)
 
 ### Media priorita'
 
@@ -724,33 +864,34 @@ Standardizzare packaging, configurazione host e, dove opportuno, distribuzione r
 - `cf-node`
 - `linter-node`
 - generatori di configurazione host-specifica
+- `projectfs-node` (post-rework, ma ad alto valore operativo)
 
 ## 11. Regole di implementazione per Codex
 
 Quando Codex lavora su questo repository deve seguire queste regole:
 
-1. **Prima osserva, poi cambia**  
+1. **Prima osserva, poi cambia**
    Mappa capability attuali e file toccati prima di proporre refactor.
 
-2. **Una milestone per branch/PR**  
+2. **Una milestone per branch/PR**
    Non combinare modernizzazione MCP, refactor skill e packaging nella stessa PR.
 
-3. **Compatibilita' in avanti e indietro**  
+3. **Compatibilita' in avanti e indietro**
    Se un tool esistente cambia output, mantieni per quanto possibile la forma precedente in `content` e aggiungi il nuovo formato in `structuredContent`.
 
-4. **No big bang rewrite**  
+4. **No big bang rewrite**
    Preferire adattatori, helper condivisi e migrazioni per server pilota.
 
-5. **Test obbligatori**  
+5. **Test obbligatori**
    Ogni modifica a un server deve avere almeno smoke test + un test funzionale sul nuovo comportamento.
 
-6. **Documentare l'intento**  
+6. **Documentare l'intento**
    Ogni PR deve spiegare: capability nuove, rischio compatibilita', fallback, rollback.
 
-7. **Non ipotizzare supporto client universale**  
+7. **Non ipotizzare supporto client universale**
    Feature come prompts, roots, elicitation, completions o resource rendering possono avere supporto diverso a seconda dell'host. Prevedere fallback.
 
-8. **Per i task analitici, scegliere il punto di ingresso corretto**  
+8. **Per i task analitici, scegliere il punto di ingresso corretto**
    Se il task parte da ticket, documento, allegato, commit o fonti miste e richiede ricostruzione tecnica, usa `mcp-technical-analyst` come riferimento primario.
 
 ## 12. Contratti specifici per server e skill
@@ -762,11 +903,17 @@ Quando Codex lavora su questo repository deve seguire queste regole:
 - mantenere il trio `git_query`, `git_diff`, `git_conflict_manager`
 - classificare esplicitamente tool read-only vs write-capable
 - migliorare output strutturato
+- introdurre `repo_info` e `rebase_status` come primitive diagnostiche di alto livello
+- rendere esplicite le semantiche di confronto (`two_dot`, `three_dot`, `range_diff`)
+- esporre conflitti come oggetti strutturati e non solo come testo
+- rendere `rebase_step` trasparente, conservativo e senza fallback impliciti
 
 ### Non fare
 
 - non fondere lettura e scrittura nello stesso tool se peggiora la sicurezza
 - non introdurre dipendenze remote GitHub in `git-node`; per il remoto valutare integrazione separata
+- non lasciare `compare` con semantica implicita nei casi di rebase
+- non usare fallback automatici come `commit --no-edit` dentro `rebase_step`
 
 ## 12.2 `docs-node`
 
@@ -845,6 +992,23 @@ Quando Codex lavora su questo repository deve seguire queste regole:
 - non sostituire `mcp-technical-analyst` come intake standard per i task di analisi tecnica multi-sorgente
 - non diventare una skill monolitica che replica tutto il contenuto delle skill figlie
 
+## 12.8 `projectfs-node`
+
+### Target
+
+- server read-only, cross-platform e whitelist-constrained per lettura file e navigazione progetto
+- tool separati (`read_file`, `list_dir`, `grep_files`, `stat`, opzionalmente `read_many`) per compatibilita' e chiarezza
+- enforcement rigoroso di `allowedRoots` sul target finale canonicalizzato
+- policy esplicita per symlink e junction
+- schema tool semplici e validabili da client rigorosi
+
+### Non fare
+
+- non introdurre alcuna operazione write sul filesystem del progetto
+- non eseguire shell generica
+- non sostituire `git-node`, `docs-node` o `office-node` nei loro ruoli specialistici
+- non assumere equivalenza perfetta tra `realpath` Windows e Linux
+
 ## 13. Test strategy
 
 ## 13.1 Test minimi richiesti
@@ -858,6 +1022,7 @@ Per ogni server modificato:
 - almeno un caso errore
 - compatibilita' legacy minima
 - validazione degli input schema restituiti da `tools/list`
+- per `projectfs-node`, test cross-platform su path normalization, whitelist enforcement e gestione symlink/junction
 
 ## 13.2 Test consigliati
 
@@ -988,7 +1153,8 @@ Ordine raccomandato per Codex:
 5. Milestone 4 (prompt MCP)
 6. Milestone 5 (skill modernization)
 7. Milestone 6 (custom agents/subagents)
-8. Milestone 7 (packaging/distribuzione)
+8. Milestone 7 (`projectfs-node`, post-rework)
+9. Milestone 8 (packaging/distribuzione)
 
 ## 19. Allegato operativo: esempio AGENTS breve
 
@@ -1015,50 +1181,50 @@ Prima di modificare MCP server o skill in questo repository:
 
 ### OpenAI Codex
 
-- Custom instructions with AGENTS.md — Codex  
+- Custom instructions with AGENTS.md — Codex
   https://developers.openai.com/codex/guides/agents-md
-- Customization — Codex  
+- Customization — Codex
   https://developers.openai.com/codex/concepts/customization
-- Agent Skills — Codex  
+- Agent Skills — Codex
   https://developers.openai.com/codex/skills
-- Subagents — Codex  
+- Subagents — Codex
   https://developers.openai.com/codex/subagents
-- Use Codex with the Agents SDK  
+- Use Codex with the Agents SDK
   https://developers.openai.com/codex/guides/agents-sdk
 
 ### MCP specification
 
-- Overview / Server features  
+- Overview / Server features
   https://modelcontextprotocol.io/specification/2025-06-18/server
-- Tools  
+- Tools
   https://modelcontextprotocol.io/specification/2025-06-18/server/tools
-- Resources  
+- Resources
   https://modelcontextprotocol.io/specification/2025-06-18/server/resources
-- Prompts  
+- Prompts
   https://modelcontextprotocol.io/specification/2025-06-18/server/prompts
-- Roots  
+- Roots
   https://modelcontextprotocol.io/specification/2025-06-18/client/roots
-- Progress  
+- Progress
   https://modelcontextprotocol.io/specification/2025-03-26/basic/utilities/progress
-- Transports  
+- Transports
   https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
-- Changelog 2025-06-18  
+- Changelog 2025-06-18
   https://modelcontextprotocol.io/specification/2025-06-18/changelog
-- Schema reference 2025-06-18 / draft per dettagli su ResourceLink e ToolAnnotations  
-  https://modelcontextprotocol.io/specification/2025-06-18/schema  
+- Schema reference 2025-06-18 / draft per dettagli su ResourceLink e ToolAnnotations
+  https://modelcontextprotocol.io/specification/2025-06-18/schema
   https://modelcontextprotocol.io/specification/draft/schema
 
 ### Repository e skill di riferimento
 
-- `sophiadeveloper/mcp-servers` README e AGENTS  
+- `sophiadeveloper/mcp-servers` README e AGENTS
   https://github.com/sophiadeveloper/mcp-servers
-- `anthropics/skills`  
+- `anthropics/skills`
   https://github.com/anthropics/skills
-- `mcp-builder`  
+- `mcp-builder`
   https://github.com/anthropics/skills/tree/main/skills/mcp-builder
-- `skill-creator`  
+- `skill-creator`
   https://github.com/anthropics/skills/tree/main/skills/skill-creator
-- `webapp-testing`  
+- `webapp-testing`
   https://github.com/anthropics/skills/tree/main/skills/webapp-testing
 
 ### Skill del repo da considerare prioritariamente
