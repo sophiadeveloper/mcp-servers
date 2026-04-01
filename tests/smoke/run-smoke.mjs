@@ -2,7 +2,14 @@ import { spawn } from 'node:child_process';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
-export async function runSmoke({ serverName, command, args = [], env = {}, startupDelayMs = 250 }) {
+export async function runSmoke({
+  serverName,
+  command,
+  args = [],
+  env = {},
+  startupDelayMs = 250,
+  afterInitialize = null
+}) {
   const child = spawn(command, args, {
     cwd: process.cwd(),
     env: { ...process.env, ...env },
@@ -109,6 +116,10 @@ export async function runSmoke({ serverName, command, args = [], env = {}, start
 
     if (!toolsList || !Array.isArray(toolsList.tools)) {
       throw new Error(`Invalid tools/list response: ${JSON.stringify(toolsList)}`);
+    }
+
+    if (typeof afterInitialize === 'function') {
+      await afterInitialize({ request, toolsList });
     }
 
     console.log(`[PASS] ${serverName}: boot + handshake + tools/list (${toolsList.tools.length} tools)`);

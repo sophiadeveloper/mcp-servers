@@ -10,7 +10,7 @@ import path from "path";
 const execAsync = util.promisify(exec);
 const SERVER_INSTRUCTIONS = [
   "Questo server MCP espone utility Git per analisi e gestione conflitti su repository locali.",
-  "Usa sempre project_path per puntare alla root del repository target.",
+  "Usa project_path per puntare alla root del repository target; se non disponibile puoi passare roots come fallback compatibile.",
   "Preferisci prima i tool read-only (git_query, git_diff) e usa git_conflict_manager solo per operazioni di modifica esplicite.",
   "Per client moderni vengono restituiti sia content testuale sia structuredContent; i client legacy possono usare solo content."
 ].join(" ");
@@ -69,6 +69,207 @@ function makeErrorResult(error, context = {}) {
   };
 }
 
+function resolveProjectPath(args = {}) {
+  if (typeof args.project_path === "string" && args.project_path.trim() !== "") {
+    return args.project_path;
+  }
+
+  if (Array.isArray(args.roots) && args.roots.length > 0) {
+    const rootIndex = Number.isInteger(args.root_index) ? args.root_index : 0;
+    const selectedRoot = args.roots[rootIndex];
+    if (typeof selectedRoot === "string" && selectedRoot.trim() !== "") {
+      return selectedRoot;
+    }
+  }
+
+  throw new Error("Parametro mancante: specifica project_path oppure roots[].");
+}
+
+async function runGitSafe(command, projectPath) {
+  try {
+    return await runGit(command, projectPath);
+  } catch {
+    return "";
+  }
+}
+
+async function getGitDir(projectPath) {
+  const gitDirRaw = await runGit("rev-parse --git-dir", projectPath);
+  return path.resolve(projectPath, gitDirRaw);
+}
+
+function detectBomAndEncoding(fileBuffer) {
+  if (!fileBuffer || fileBuffer.length === 0) {
+    return { has_bom: false, bom: null, encoding_hint: "utf-8/unknown" };
+  }
+
+  if (fileBuffer.length >= 3 && fileBuffer[0] === 0xef && fileBuffer[1] === 0xbb && fileBuffer[2] === 0xbf) {
+    return { has_bom: true, bom: "UTF-8", encoding_hint: "utf-8" };
+  }
+  if (fileBuffer.length >= 2 && fileBuffer[0] === 0xff && fileBuffer[1] === 0xfe) {
+    return { has_bom: true, bom: "UTF-16LE", encoding_hint: "utf-16le" };
+  }
+  if (fileBuffer.length >= 2 && fileBuffer[0] === 0xfe && fileBuffer[1] === 0xff) {
+    return { has_bom: true, bom: "UTF-16BE", encoding_hint: "utf-16be" };
+  }
+  return { has_bom: false, bom: null, encoding_hint: "utf-8/unknown" };
+}
+
+function inspectConflictMarkers(fileText) {
+  const lines = fileText.split(/\r?\n/);
+  let startMarkers = 0;
+  let middleMarkers = 0;
+  let endMarkers = 0;
+  let diff3BaseMarkers = 0;
+
+  for (const line of lines) {
+    if (line.startsWith("<<<<<<<")) startMarkers += 1;
+    else if (line.startsWith("=======")) middleMarkers += 1;
+    else if (line.startsWith(">>>>>>>")) endMarkers += 1;
+    else if (line.startsWith("|||||||")) diff3BaseMarkers += 1;
+  }
+
+  return {
+    start: startMarkers,
+    middle: middleMarkers,
+    end: endMarkers,
+    diff3_base: diff3BaseMarkers,
+    has_markers: startMarkers > 0 || middleMarkers > 0 || endMarkers > 0
+  };
+}
+
+async function getRepoInfo(projectPath) {
+  const topLevel = await runGit("rev-parse --show-toplevel", projectPath);
+  const branch = await runGitSafe("symbolic-ref --quiet --short HEAD", projectPath);
+  const headHash = await runGitSafe("rev-parse HEAD", projectPath);
+  const headShort = await runGitSafe("rev-parse --short HEAD", projectPath);
+  const upstream = await runGitSafe("rev-parse --abbrev-ref --symbolic-full-name @{u}", projectPath);
+  const gitDir = await getGitDir(projectPath);
+
+  const operations = {
+    rebase: fs.existsSync(path.join(gitDir, "rebase-apply")) || fs.existsSync(path.join(gitDir, "rebase-merge")),
+    merge: fs.existsSync(path.join(gitDir, "MERGE_HEAD")),
+    cherry_pick: fs.existsSync(path.join(gitDir, "CHERRY_PICK_HEAD")),
+    bisect: fs.existsSync(path.join(gitDir, "BISECT_LOG"))
+  };
+
+  return {
+    top_level: topLevel,
+    git_dir: gitDir,
+    branch: branch || "(detached HEAD)",
+    upstream: upstream || null,
+    head: {
+      hash: headHash || null,
+      short_hash: headShort || null
+    },
+    operations_in_progress: operations
+  };
+}
+
+async function getRebaseStatus(projectPath) {
+  const gitDir = await getGitDir(projectPath);
+  const rebaseMergeDir = path.join(gitDir, "rebase-merge");
+  const rebaseApplyDir = path.join(gitDir, "rebase-apply");
+  const inRebaseMerge = fs.existsSync(rebaseMergeDir);
+  const inRebaseApply = fs.existsSync(rebaseApplyDir);
+  const inProgress = inRebaseMerge || inRebaseApply;
+
+  if (!inProgress) {
+    return {
+      in_progress: false,
+      mode: null,
+      commit_in_replay: null,
+      todo_remaining: 0,
+      conflict_files: [],
+      suggested_next_step: "none"
+    };
+  }
+
+  const mode = inRebaseMerge ? "rebase-merge" : "rebase-apply";
+  const statusDir = inRebaseMerge ? rebaseMergeDir : rebaseApplyDir;
+  const currentIndexPath = inRebaseMerge ? path.join(statusDir, "msgnum") : path.join(statusDir, "next");
+  const totalPath = inRebaseMerge ? path.join(statusDir, "end") : path.join(statusDir, "last");
+  const todoPath = inRebaseMerge ? path.join(statusDir, "git-rebase-todo") : null;
+
+  const currentIndex = fs.existsSync(currentIndexPath) ? Number.parseInt(fs.readFileSync(currentIndexPath, "utf8").trim(), 10) : null;
+  const totalCommits = fs.existsSync(totalPath) ? Number.parseInt(fs.readFileSync(totalPath, "utf8").trim(), 10) : null;
+  const replayCommit = await runGitSafe("rev-parse --short REBASE_HEAD", projectPath);
+  const conflictFilesRaw = await runGitSafe("diff --name-only --diff-filter=U", projectPath);
+  const conflictFiles = conflictFilesRaw ? conflictFilesRaw.split("\n").filter(Boolean) : [];
+
+  let todoRemaining = 0;
+  if (todoPath && fs.existsSync(todoPath)) {
+    const todoLines = fs.readFileSync(todoPath, "utf8").split(/\r?\n/);
+    todoRemaining = todoLines.filter((line) => line.trim() && !line.trim().startsWith("#")).length;
+  } else if (currentIndex && totalCommits && totalCommits >= currentIndex) {
+    todoRemaining = totalCommits - currentIndex + 1;
+  }
+
+  let suggestedNextStep = "git rebase --continue";
+  if (conflictFiles.length > 0) suggestedNextStep = "resolve_conflicts_then_continue";
+  else if (todoRemaining <= 0) suggestedNextStep = "verify_and_continue_or_finish";
+
+  return {
+    in_progress: true,
+    mode,
+    commit_in_replay: replayCommit || null,
+    current_index: Number.isFinite(currentIndex) ? currentIndex : null,
+    total_commits: Number.isFinite(totalCommits) ? totalCommits : null,
+    todo_remaining: todoRemaining,
+    conflict_files: conflictFiles,
+    suggested_next_step: suggestedNextStep
+  };
+}
+
+async function listConflictsDetailed(projectPath) {
+  const conflictFilesRaw = await runGitSafe("diff --name-only --diff-filter=U", projectPath);
+  const conflictFiles = conflictFilesRaw ? conflictFilesRaw.split("\n").filter(Boolean) : [];
+  const details = [];
+
+  for (const filePath of conflictFiles) {
+    const unmergedRaw = await runGitSafe(`ls-files -u -- "${filePath}"`, projectPath);
+    const entries = unmergedRaw
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^(\d+)\s+([0-9a-f]{40})\s+(\d)\t(.+)$/);
+        if (!match) return null;
+        return { mode: match[1], object_id: match[2], stage: Number(match[3]), path: match[4] };
+      })
+      .filter(Boolean);
+
+    const baseEntry = entries.find((entry) => entry.stage === 1) || null;
+    const oursEntry = entries.find((entry) => entry.stage === 2) || null;
+    const theirsEntry = entries.find((entry) => entry.stage === 3) || null;
+
+    const fullPath = path.join(projectPath, filePath);
+    const fileBuffer = fs.existsSync(fullPath) ? fs.readFileSync(fullPath) : Buffer.alloc(0);
+    const bomInfo = detectBomAndEncoding(fileBuffer);
+    const markerInfo = inspectConflictMarkers(fileBuffer.toString("utf8"));
+
+    let conflictType = "unknown";
+    if (baseEntry && oursEntry && theirsEntry) conflictType = "both-modified";
+    else if (!baseEntry && oursEntry && theirsEntry) conflictType = "add/add";
+    else if (baseEntry && oursEntry && !theirsEntry) conflictType = "deleted-by-theirs";
+    else if (baseEntry && !oursEntry && theirsEntry) conflictType = "deleted-by-ours";
+
+    details.push({
+      file_path: filePath,
+      conflict_type: conflictType,
+      entries,
+      sides: {
+        base: baseEntry,
+        ours: oursEntry,
+        theirs: theirsEntry
+      },
+      markers: markerInfo,
+      encoding: bomInfo
+    });
+  }
+
+  return details;
+}
+
 const server = new Server(
   { name: "git-node-manager", version: "3.2.0" },
   { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS }
@@ -105,10 +306,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             action: {
               type: "string",
-              enum: ["status", "history", "list_files", "commit_info", "blame", "check_ancestor"],
-              description: "L'operazione di lettura: 'status', 'history', 'list_files', 'commit_info', 'blame', 'check_ancestor'."
+              enum: ["status", "history", "list_files", "commit_info", "blame", "check_ancestor", "repo_info", "rebase_status"],
+              description: "L'operazione di lettura: 'status', 'history', 'list_files', 'commit_info', 'blame', 'check_ancestor', 'repo_info', 'rebase_status'."
             },
             project_path: { type: "string" },
+            roots: {
+              type: "array",
+              items: { type: "string" },
+              description: "Fallback opzionale a project_path: lista roots passate dal client."
+            },
+            root_index: { type: "number", description: "Indice root da usare (default 0)." },
             file_path: { type: "string" },
             max_count: { type: "number" },
             search_text: { type: "string" },
@@ -120,7 +327,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             start_line: { type: "number" },
             end_line: { type: "number" }
           },
-          required: ["action", "project_path"]
+          required: ["action"]
         }
       },
       {
@@ -132,18 +339,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             action: {
               type: "string",
-              enum: ["working", "compare", "show"],
+              enum: ["working", "compare", "show", "range_diff"],
               description: "Tipo di diff: 'working' (unstaged/cached), 'compare' (tra branch), 'show' (dettagli commit)."
             },
             project_path: { type: "string" },
+            roots: {
+              type: "array",
+              items: { type: "string" },
+              description: "Fallback opzionale a project_path: lista roots passate dal client."
+            },
+            root_index: { type: "number", description: "Indice root da usare (default 0)." },
             target: { type: "string", description: "Branch base per compare." },
             source: { type: "string", description: "Branch/Commit sorgente. Default HEAD." },
             commit_hash: { type: "string" },
             file_path: { type: "string" },
             cached: { type: "boolean", description: "Per 'working': diff dello stage." },
-            name_only: { type: "boolean" }
+            name_only: { type: "boolean" },
+            diff_mode: {
+              type: "string",
+              enum: ["two_dot", "three_dot"],
+              description: "Per compare: two_dot usa target..source, three_dot usa target...source (default)."
+            },
+            stat: { type: "boolean", description: "Per compare: aggiunge --stat." },
+            original_range: { type: "string", description: "Per range_diff: range commit originale (es. origin/main..HEAD@{1})." },
+            rewritten_range: { type: "string", description: "Per range_diff: range commit riscritto (es. origin/main..HEAD)." }
           },
-          required: ["action", "project_path"]
+          required: ["action"]
         }
       },
       {
@@ -155,16 +376,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             action: {
               type: "string",
-              enum: ["list", "analyze", "read", "resolve", "stage", "rebase_step", "restore"],
-              description: "Azione: 'list', 'analyze', 'read', 'resolve', 'stage', 'rebase_step', 'restore'."
+              enum: ["list", "list_detailed", "analyze", "read", "resolve", "stage", "rebase_step", "restore"],
+              description: "Azione: 'list', 'list_detailed', 'analyze', 'read', 'resolve', 'stage', 'rebase_step', 'restore'."
             },
             project_path: { type: "string" },
+            roots: {
+              type: "array",
+              items: { type: "string" },
+              description: "Fallback opzionale a project_path: lista roots passate dal client."
+            },
+            root_index: { type: "number", description: "Indice root da usare (default 0)." },
             file_path: { type: "string" },
             commit_hash: { type: "string" },
             resolved_content: { type: "string" },
             rebase_action: { type: "string", enum: ["continue", "abort", "skip"] }
           },
-          required: ["action", "project_path"]
+          required: ["action"]
         }
       }
     ],
@@ -173,9 +400,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  const projectPath = args.project_path;
+  let projectPath = null;
 
   try {
+    projectPath = resolveProjectPath(args);
     if (name === "git_query") {
       switch (args.action) {
         case "status":
@@ -244,6 +472,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
             throw e;
           }
+        case "repo_info":
+          const repoInfo = await getRepoInfo(projectPath);
+          return makeSuccessResult({
+            text: repoInfo,
+            structuredContent: { ok: true, tool: "git_query", action: "repo_info", project_path: projectPath, repo: repoInfo }
+          });
+
+        case "rebase_status":
+          const rebaseStatus = await getRebaseStatus(projectPath);
+          return makeSuccessResult({
+            text: rebaseStatus,
+            structuredContent: { ok: true, tool: "git_query", action: "rebase_status", project_path: projectPath, rebase_status: rebaseStatus }
+          });
+
         default: throw new Error(`Azione non valida per git_query: ${args.action}`);
       }
     }
@@ -262,12 +504,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const src = args.source || "HEAD";
           const tgt = args.target;
           if (!tgt) throw new Error("target obbligatorio per compare.");
+          const diffMode = args.diff_mode === "two_dot" ? "two_dot" : "three_dot";
+          const separator = diffMode === "two_dot" ? ".." : "...";
           const nameOnly = args.name_only ? "--name-only" : "";
+          const statFlag = args.stat ? "--stat" : "";
           const compFilter = args.file_path ? ` -- "${args.file_path}"` : "";
-          const compOut = await runGit(`diff ${nameOnly} ${tgt}...${src}${compFilter}`, projectPath);
+          const compOut = await runGit(`diff ${nameOnly} ${statFlag} ${tgt}${separator}${src}${compFilter}`, projectPath);
           return makeSuccessResult({
             text: compOut || "Nessuna differenza.",
-            structuredContent: { ok: true, tool: "git_diff", action: "compare", project_path: projectPath, source: src, target: tgt, output: compOut || "" }
+            structuredContent: {
+              ok: true,
+              tool: "git_diff",
+              action: "compare",
+              project_path: projectPath,
+              source: src,
+              target: tgt,
+              diff_mode: diffMode,
+              stat: args.stat === true,
+              output: compOut || ""
+            }
           });
 
         case "show":
@@ -277,6 +532,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return makeSuccessResult({
             text: showOut,
             structuredContent: { ok: true, tool: "git_diff", action: "show", project_path: projectPath, commit_hash: hash, output: showOut }
+          });
+
+        case "range_diff":
+          if (!args.original_range || !args.rewritten_range) {
+            throw new Error("original_range e rewritten_range sono obbligatori per range_diff.");
+          }
+          const rangeDiffOut = await runGit(`range-diff --no-color ${args.original_range} ${args.rewritten_range}`, projectPath);
+          return makeSuccessResult({
+            text: rangeDiffOut || "Nessuna differenza tra le due serie di commit.",
+            structuredContent: {
+              ok: true,
+              tool: "git_diff",
+              action: "range_diff",
+              project_path: projectPath,
+              original_range: args.original_range,
+              rewritten_range: args.rewritten_range,
+              output: rangeDiffOut || ""
+            }
           });
 
         default: throw new Error(`Azione non valida per git_diff: ${args.action}`);
@@ -290,6 +563,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return makeSuccessResult({
             text: confList ? "File in conflitto:\n" + confList : "Nessun conflitto.",
             structuredContent: { ok: true, tool: "git_conflict_manager", action: "list", project_path: projectPath, files: confList ? confList.split("\n").filter(Boolean) : [] }
+          });
+
+        case "list_detailed":
+          const conflictsDetailed = await listConflictsDetailed(projectPath);
+          return makeSuccessResult({
+            text: conflictsDetailed,
+            structuredContent: {
+              ok: true,
+              tool: "git_conflict_manager",
+              action: "list_detailed",
+              project_path: projectPath,
+              conflict_count: conflictsDetailed.length,
+              conflicts: conflictsDetailed
+            }
           });
 
         case "analyze":
@@ -332,9 +619,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         case "rebase_step":
           if (!args.rebase_action) throw new Error("rebase_action obbligatorio.");
           let cmd = `rebase --${args.rebase_action}`;
-          if (fs.existsSync(path.join(projectPath, ".git", "MERGE_HEAD")) && args.rebase_action === "continue") {
-            cmd = "commit --no-edit";
-          }
           const rbOut = await runGit(cmd, projectPath);
           return makeSuccessResult({
             text: rbOut || `Azione ${args.rebase_action} completata.`,
