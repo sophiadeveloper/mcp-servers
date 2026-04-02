@@ -629,6 +629,7 @@ async function searchDocuments(args) {
 
   return rows.map((row) => ({
     ...row,
+    resource_uri: buildDocumentUri(row.id),
     uri: buildDocumentUri(row.id),
     shelf_uri: buildShelfUri(row.shelf_id, row.shelf_name)
   }));
@@ -683,6 +684,7 @@ async function listDocuments(args) {
       file_path: row.file_path,
       size_bytes: row.size_bytes,
       shelf_id: row.shelf_id,
+      resource_uri: buildDocumentUri(row.id),
       uri: buildDocumentUri(row.id),
       shelf_uri: buildShelfUri(row.shelf_id, row.shelf_name)
     };
@@ -1607,12 +1609,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
 
           let header = `Doc: ${document.title} (${document.shelf_name})`;
+          let tags = null;
           if (args.include_tags === true) {
-            const tags = await getDocumentTags(document.id);
+            tags = await getDocumentTags(document.id);
             header += `\nTags: ${tags.length > 0 ? tags.join(", ") : "(none)"}`;
           }
 
-          return responseFromBlocks([notice, `${header}\n\n${output}`]);
+          const payload = {
+            document_id: document.id,
+            resource_uri: buildDocumentUri(document.id),
+            text: `${header}\n\n${output}`
+          };
+
+          if (tags) payload.tags = tags;
+
+          return responseFromBlocks([notice, jsonText(payload)]);
         }
 
         case "list_documents": {
