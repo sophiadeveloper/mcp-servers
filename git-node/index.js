@@ -85,6 +85,20 @@ function resolveProjectPath(args = {}) {
   throw new Error("Parametro mancante: specifica project_path oppure roots[].");
 }
 
+function shellQuote(value) {
+  return `"${String(value).replace(/(["\\$`])/g, "\\$1")}"`;
+}
+
+function parseCommitRange(value) {
+  const normalized = String(value || "").trim();
+  const dotsIndex = normalized.indexOf("..");
+  if (dotsIndex === -1) return null;
+
+  const left = normalized.slice(0, dotsIndex).trim();
+  const right = normalized.slice(dotsIndex + (normalized.startsWith("...", dotsIndex) ? 3 : 2)).trim();
+  if (!left || !right) return null;
+  return { left, right, raw: normalized };
+}
 async function runGitSafe(command, projectPath) {
   try {
     return await runGit(command, projectPath);
@@ -510,6 +524,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const statFlag = args.stat ? "--stat" : "";
           const compFilter = args.file_path ? ` -- "${args.file_path}"` : "";
           const compOut = await runGit(`diff ${nameOnly} ${statFlag} ${tgt}${separator}${src}${compFilter}`, projectPath);
+          const hasDiff = Boolean(compOut && compOut.trim());
           return makeSuccessResult({
             text: compOut || "Nessuna differenza.",
             structuredContent: {
@@ -521,6 +536,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               target: tgt,
               diff_mode: diffMode,
               stat: args.stat === true,
+              has_diff: hasDiff,
               output: compOut || ""
             }
           });
@@ -538,7 +554,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (!args.original_range || !args.rewritten_range) {
             throw new Error("original_range e rewritten_range sono obbligatori per range_diff.");
           }
-          const rangeDiffOut = await runGit(`range-diff --no-color ${args.original_range} ${args.rewritten_range}`, projectPath);
+          const originalRange = String(args.original_range).trim();
+          const rewrittenRange = String(args.rewritten_range).trim();
+          const parsedOriginal = parseCommitRange(originalRange);
+          const parsedRewritten = parseCommitRange(rewrittenRange);
+          if (!parsedOriginal || !parsedRewritten) {
+            throw new Error("Formato range non valido. Usa '<base>..<tip>' o '<base>...<tip>' per original_range e rewritten_range.");
+          }
+
+          let rangeDiffOut;
+          try {
+            rangeDiffOut = await runGit(
+              `range-diff --no-color ${shellQuote(parsedOriginal.raw)} ${shellQuote(parsedRewritten.raw)}`,
+              projectPath
+            );
+          } catch (error) {
+            if (/need two commit ranges/i.test(error.message) && parsedOriginal.left === parsedRewritten.left) {
+              rangeDiffOut = await runGit(
+                `range-diff --no-color ${shellQuote(parsedOriginal.left)} ${shellQuote(parsedOriginal.right)} ${shellQuote(parsedRewritten.right)}`,
+                projectPath
+              );
+            } else {
+              throw error;
+            }
+          }
+
+          const hasRangeDiff = Boolean(rangeDiffOut && rangeDiffOut.trim());
           return makeSuccessResult({
             text: rangeDiffOut || "Nessuna differenza tra le due serie di commit.",
             structuredContent: {
@@ -546,8 +587,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               tool: "git_diff",
               action: "range_diff",
               project_path: projectPath,
-              original_range: args.original_range,
-              rewritten_range: args.rewritten_range,
+              original_range: originalRange,
+              rewritten_range: rewrittenRange,
+              has_diff: hasRangeDiff,
               output: rangeDiffOut || ""
             }
           });
