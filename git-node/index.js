@@ -439,8 +439,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "Per compare: two_dot usa target..source, three_dot usa target...source (default)."
             },
             stat: { type: "boolean", description: "Per compare: aggiunge --stat." },
-            original_range: { type: "string", description: "Per range_diff: range commit originale (es. origin/main..HEAD@{1})." },
-            rewritten_range: { type: "string", description: "Per range_diff: range commit riscritto (es. origin/main..HEAD)." }
+            original_range: {
+              type: "string",
+              description: "Per range_diff: range commit originale (es. origin/main..HEAD@{1}). Deve rappresentare la stessa serie logica del range riscritto."
+            },
+            rewritten_range: {
+              type: "string",
+              description: "Per range_diff: range commit riscritto (es. origin/main..HEAD). Se i due range non sono equivalenti, only_left/only_right possono essere corretti ma fuorvianti."
+            }
           },
           required: ["action"]
         }
