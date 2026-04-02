@@ -109,6 +109,47 @@ await runSmoke({
       }
     }
 
+    const shelfResource = resourcesListResult.resources.find((resource) =>
+      typeof resource?.uri === 'string' && resource.uri.startsWith('docs://shelf/')
+    );
+    if (!shelfResource) {
+      throw new Error(`resources/list did not return any shelf resource: ${JSON.stringify(resourcesListResult)}`);
+    }
+
+    const shelfReadResult = await request('resources/read', { uri: shelfResource.uri });
+    if (!shelfReadResult || !Array.isArray(shelfReadResult.contents)) {
+      throw new Error(`Invalid shelf resources/read response: ${JSON.stringify(shelfReadResult)}`);
+    }
+    if (shelfReadResult.contents.length === 0) {
+      throw new Error(`shelf resources/read returned an empty contents array: ${JSON.stringify(shelfReadResult)}`);
+    }
+    if (shelfReadResult.contents[0]?.mimeType !== 'application/json') {
+      throw new Error(`shelf resources/read first content must have mimeType application/json: ${JSON.stringify(shelfReadResult.contents[0])}`);
+    }
+    if (typeof shelfReadResult.contents[0]?.text !== 'string' || shelfReadResult.contents[0].text.length === 0) {
+      throw new Error(`shelf resources/read first content missing JSON text payload: ${JSON.stringify(shelfReadResult.contents[0])}`);
+    }
+
+    let shelfJson;
+    try {
+      shelfJson = JSON.parse(shelfReadResult.contents[0].text);
+    } catch (error) {
+      throw new Error(`shelf resources/read first content is not valid JSON: ${error.message}`);
+    }
+
+    if (!Array.isArray(shelfJson.documents)) {
+      throw new Error(`shelf JSON payload missing documents array: ${JSON.stringify(shelfJson)}`);
+    }
+    if (shelfJson.documents.length === 0) {
+      throw new Error(`shelf JSON payload documents array is empty: ${JSON.stringify(shelfJson)}`);
+    }
+
+    for (const document of shelfJson.documents) {
+      if (typeof document?.uri !== 'string' || !document.uri.startsWith('docs://document/')) {
+        throw new Error(`shelf JSON document missing readable URI: ${JSON.stringify(document)}`);
+      }
+    }
+
     const resourceUri = docWithUri.resource_uri;
 
     const resourceReadResult = await request('resources/read', { uri: resourceUri });
