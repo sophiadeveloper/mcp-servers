@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListResourceTemplatesRequestSchema
+} from "@modelcontextprotocol/sdk/types.js";
 import sqlite3 from "sqlite3";
 import fs from "fs";
 import path from "path";
@@ -70,6 +76,32 @@ function responseFromBlocks(blocks, isError = false) {
 
 function jsonText(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function buildShelfResourceUri(shelfName) {
+  return `docs://shelf/${encodeURIComponent(shelfName)}`;
+}
+
+function buildDocumentResourceUri(documentId) {
+  return `docs://document/${encodeURIComponent(String(documentId))}`;
+}
+
+function parseResourceUri(uri) {
+  const shelfMatch = /^docs:\/\/shelf\/(.+)$/.exec(uri);
+  if (shelfMatch) {
+    return { type: "shelf", shelf: decodeURIComponent(shelfMatch[1]) };
+  }
+
+  const documentMatch = /^docs:\/\/document\/(.+)$/.exec(uri);
+  if (documentMatch) {
+    const idValue = Number(decodeURIComponent(documentMatch[1]));
+    if (!Number.isFinite(idValue) || idValue <= 0) {
+      throw new Error(`URI documento non valida: ${uri}`);
+    }
+    return { type: "document", documentId: Math.floor(idValue) };
+  }
+
+  throw new Error(`URI resource non supportata: ${uri}`);
 }
 
 function normalizePathValue(inputPath) {
@@ -817,8 +849,111 @@ async function initDb() {
 
 const server = new Server(
   { name: "docs-mcp-server", version: "1.1.0" },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, resources: {} } }
 );
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  try {
+    const shelves = await allQuery(
+      `SELECT s.id, s.name, s.description, COUNT(d.id) AS document_count
+       FROM shelves s
+       LEFT JOIN documents d ON d.shelf_id = s.id
+       GROUP BY s.id
+       ORDER BY s.name`
+    );
+    const documents = await allQuery(
+      `SELECT d.id, d.title, d.file_path, s.name AS shelf_name
+       FROM documents d
+       JOIN shelves s ON s.id = d.shelf_id
+       ORDER BY s.name, d.title`
+    );
+
+    const resources = [
+      ...shelves.map((shelf) => ({
+        uri: buildShelfResourceUri(shelf.name),
+        name: `Shelf: ${shelf.name}`,
+        description: `${shelf.description || "Scaffale documentazione"} (documenti: ${shelf.document_count})`,
+        mimeType: "application/json"
+      })),
+      ...documents.map((document) => ({
+        uri: buildDocumentResourceUri(document.id),
+        name: `Document: ${document.title}`,
+        description: `${document.shelf_name} · ${document.file_path}`,
+        mimeType: "text/markdown"
+      }))
+    ];
+
+    return { resources };
+  } catch (error) {
+    return responseFromBlocks([`[ERROR] ${error.message}`], true);
+  }
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params;
+
+  try {
+    const parsed = parseResourceUri(uri);
+
+    if (parsed.type === "shelf") {
+      const shelf = await getShelfByName(parsed.shelf);
+      const documents = await allQuery(
+        `SELECT d.id, d.title, d.file_path, d.updated_at
+         FROM documents d
+         WHERE d.shelf_id = ?
+         ORDER BY d.title`,
+        [shelf.id]
+      );
+
+      return {
+        contents: [{
+          uri,
+          mimeType: "application/json",
+          text: jsonText({
+            shelf: shelf.name,
+            description: shelf.description,
+            document_count: documents.length,
+            documents
+          })
+        }]
+      };
+    }
+
+    const document = await ensureDocumentExists(parsed.documentId);
+    return {
+      contents: [{
+        uri,
+        mimeType: "text/markdown",
+        text: document.content
+      }]
+    };
+  } catch (error) {
+    return responseFromBlocks([`[ERROR] ${error.message}`], true);
+  }
+});
+
+server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+  try {
+    return {
+      resourceTemplates: [
+        {
+          uriTemplate: "docs://shelf/{shelf}",
+          name: "Shelf documents",
+          description: "Lista documenti per scaffale (parametro: shelf).",
+          mimeType: "application/json"
+        },
+        {
+          uriTemplate: "docs://document/{document_id}",
+          name: "Document content",
+          description: "Contenuto markdown del documento (parametro: document_id).",
+          mimeType: "text/markdown"
+        }
+      ]
+    };
+  } catch (error) {
+    return responseFromBlocks([`[ERROR] ${error.message}`], true);
+  }
+});
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
