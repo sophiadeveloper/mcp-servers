@@ -10,10 +10,18 @@ function setupTempRepo() {
   execSync('git config user.email "smoke@example.com"', { cwd: repoPath, stdio: 'ignore' });
   execSync('git config user.name "Smoke Test"', { cwd: repoPath, stdio: 'ignore' });
   writeFileSync(join(repoPath, 'README.md'), '# smoke\n', 'utf8');
-  execSync('git add README.md && git commit -m "init"', { cwd: repoPath, stdio: 'ignore' });
-  writeFileSync(join(repoPath, 'feature.txt'), 'v1\n', 'utf8');
-  execSync('git add feature.txt && git commit -m "feature-1"', { cwd: repoPath, stdio: 'ignore' });
-  return repoPath;
+  writeFileSync(join(repoPath, 'maintenance.php'), '<?php echo "keep";\n', 'utf8');
+  writeFileSync(join(repoPath, 'shared.txt'), 'base\n', 'utf8');
+  writeFileSync(join(repoPath, 'identical.txt'), 'same\n', 'utf8');
+  execSync('git add . && git commit -m "init"', { cwd: repoPath, stdio: 'ignore' });
+  execSync('git checkout -B master', { cwd: repoPath, stdio: 'ignore' });
+  writeFileSync(join(repoPath, 'shared.txt'), 'left-change\n', 'utf8');
+  execSync('git add shared.txt && git commit -m "left-update"', { cwd: repoPath, stdio: 'ignore' });
+  execSync('git checkout -b upgrade HEAD~1', { cwd: repoPath, stdio: 'ignore' });
+  execSync('git rm maintenance.php', { cwd: repoPath, stdio: 'ignore' });
+  writeFileSync(join(repoPath, 'shared.txt'), 'right-change\n', 'utf8');
+  execSync('git add shared.txt && git commit -m "right-update"', { cwd: repoPath, stdio: 'ignore' });
+  return { repoPath, leftRef: 'master', rightRef: 'upgrade' };
 }
 
 await runSmoke({
@@ -21,13 +29,15 @@ await runSmoke({
   command: process.execPath,
   args: ['git-node/index.js'],
   afterInitialize: async ({ request }) => {
-    const repoPath = setupTempRepo();
+    const { repoPath, leftRef, rightRef } = setupTempRepo();
 
     const historyResult = await request('tools/call', {
       name: 'git_query',
       arguments: {
         action: 'history',
-        roots: [repoPath]
+        roots: [repoPath],
+        commit_ref: leftRef,
+        max_count: 1
       }
     });
 
@@ -37,6 +47,22 @@ await runSmoke({
 
     if (!historyResult?.structuredContent?.commits?.length) {
       throw new Error(`git_query history missing structured commits: ${JSON.stringify(historyResult)}`);
+    }
+    const leftHistoryTip = historyResult?.structuredContent?.commits?.[0]?.hash;
+
+    const commitInfoResult = await request('tools/call', {
+      name: 'git_query',
+      arguments: {
+        action: 'commit_info',
+        project_path: repoPath,
+        commit_ref: leftRef
+      }
+    });
+    if (commitInfoResult?.isError || !commitInfoResult?.structuredContent?.commit?.short_hash) {
+      throw new Error(`git_query commit_info failed: ${JSON.stringify(commitInfoResult)}`);
+    }
+    if (commitInfoResult.structuredContent.commit.short_hash !== leftHistoryTip) {
+      throw new Error(`history(${leftRef}) and commit_info(${leftRef}) are not aligned`);
     }
 
     const repoInfoResult = await request('tools/call', {
@@ -66,14 +92,53 @@ await runSmoke({
       arguments: {
         action: 'compare',
         project_path: repoPath,
-        target: 'HEAD~1',
-        source: 'HEAD',
+        source: leftRef,
+        target: rightRef,
         diff_mode: 'two_dot',
-        stat: true
+        stat: true,
+        file_path: 'maintenance.php'
       }
     });
     if (compareResult?.isError || compareResult?.structuredContent?.diff_mode !== 'two_dot') {
       throw new Error(`git_diff compare(two_dot/stat) failed: ${JSON.stringify(compareResult)}`);
+    }
+    const fileMeta = compareResult?.structuredContent?.files?.find((f) => f.path === 'maintenance.php');
+    if (!fileMeta || fileMeta.change_type !== 'D' || fileMeta.exists_in_left !== true || fileMeta.exists_in_right !== false) {
+      throw new Error(`git_diff compare metadata mismatch: ${JSON.stringify(compareResult)}`);
+    }
+    if (String(compareResult?.structuredContent?.output || '').includes('new file mode')) {
+      throw new Error(`git_diff compare should not mark maintenance.php as new file: ${JSON.stringify(compareResult)}`);
+    }
+
+    const compareModified = await request('tools/call', {
+      name: 'git_diff',
+      arguments: {
+        action: 'compare',
+        project_path: repoPath,
+        source: leftRef,
+        target: rightRef,
+        diff_mode: 'two_dot',
+        file_path: 'shared.txt'
+      }
+    });
+    const sharedMeta = compareModified?.structuredContent?.files?.find((f) => f.path === 'shared.txt');
+    if (compareModified?.isError || !sharedMeta || sharedMeta.change_type !== 'M') {
+      throw new Error(`git_diff compare shared.txt metadata mismatch: ${JSON.stringify(compareModified)}`);
+    }
+
+    const compareIdentical = await request('tools/call', {
+      name: 'git_diff',
+      arguments: {
+        action: 'compare',
+        project_path: repoPath,
+        source: leftRef,
+        target: rightRef,
+        diff_mode: 'two_dot',
+        file_path: 'identical.txt'
+      }
+    });
+    if (compareIdentical?.isError || compareIdentical?.structuredContent?.has_diff !== false) {
+      throw new Error(`git_diff compare identical.txt should have no diff: ${JSON.stringify(compareIdentical)}`);
     }
 
     const rangeDiffResult = await request('tools/call', {
@@ -81,8 +146,8 @@ await runSmoke({
       arguments: {
         action: 'range_diff',
         project_path: repoPath,
-        original_range: 'HEAD~1..HEAD',
-        rewritten_range: 'HEAD~1..HEAD'
+        original_range: `${leftRef}~1..${leftRef}`,
+        rewritten_range: `${leftRef}~1..${leftRef}`
       }
     });
     if (rangeDiffResult?.isError || rangeDiffResult?.structuredContent?.action !== 'range_diff') {

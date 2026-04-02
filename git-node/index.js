@@ -176,6 +176,52 @@ async function getGitDir(projectPath) {
   return path.resolve(projectPath, gitDirRaw);
 }
 
+async function ensureResolvableRef(ref, projectPath, argName = "ref") {
+  const normalizedRef = String(ref || "").trim();
+  if (!normalizedRef) {
+    throw new Error(`${argName} non valido: valore vuoto.`);
+  }
+
+  try {
+    await runGit(`rev-parse --verify ${shellQuote(`${normalizedRef}^{commit}`)}`, projectPath);
+  } catch {
+    throw new Error(`${argName} non risolvibile: ${normalizedRef}`);
+  }
+
+  return normalizedRef;
+}
+
+async function fileExistsInRef(ref, filePath, projectPath) {
+  try {
+    await runGit(`cat-file -e ${shellQuote(`${ref}:${filePath}`)}`, projectPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseNameStatus(output) {
+  if (!output || !output.trim()) return [];
+
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("\t");
+      const code = parts[0] || "";
+      const fromPath = parts[1] || null;
+      const toPath = parts[2] || fromPath;
+      return {
+        raw_status: code,
+        change_type: code.charAt(0) || "M",
+        from_path: fromPath,
+        to_path: toPath,
+        path: toPath || fromPath || null
+      };
+    });
+}
+
 function detectBomAndEncoding(fileBuffer) {
   if (!fileBuffer || fileBuffer.length === 0) {
     return { has_bom: false, bom: null, encoding_hint: "utf-8/unknown" };
@@ -429,6 +475,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             root_index: { type: "number", description: "Indice root da usare (default 0)." },
             target: { type: "string", description: "Branch base per compare." },
             source: { type: "string", description: "Branch/Commit sorgente. Default HEAD." },
+            left_ref: { type: "string", description: "Ref sinistro esplicito per compare (precedenza su source)." },
+            right_ref: { type: "string", description: "Ref destro esplicito per compare (precedenza su target)." },
             commit_hash: { type: "string" },
             file_path: { type: "string" },
             cached: { type: "boolean", description: "Per 'working': diff dello stage." },
@@ -498,11 +546,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           });
 
         case "history":
+          if (args.commit_ref) {
+            await ensureResolvableRef(args.commit_ref, projectPath, "commit_ref");
+          }
           let limitFlag = args.max_count ? ` -n ${args.max_count}` : (!args.commit_range && !args.file_path && !args.search_text ? " -n 20" : "");
           const target = args.file_path ? ` -- "${args.file_path}"` : "";
           let searchParam = args.search_text ? ` --grep="${args.search_text.replace(/"/g, '\\"')}" -i` : "";
           if (args.search_code) searchParam += ` -G"${args.search_code.replace(/"/g, '\\"')}"`;
-          const revRange = args.commit_range ? ` ${args.commit_range}` : "";
+          const revRange = args.commit_range ? ` ${args.commit_range}` : (args.commit_ref ? ` ${args.commit_ref}` : "");
           const format = `--pretty=format:"%h|%an|%ad|%s" --date=short`;
           const histOut = await runGit(`log${limitFlag}${searchParam} ${format}${revRange}${target}`, projectPath);
           const commits = histOut.split('\n').filter(l => l.trim()).map(l => {
@@ -510,7 +561,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           });
           return makeSuccessResult({
             text: commits,
-            structuredContent: { ok: true, tool: "git_query", action: "history", project_path: projectPath, commits }
+            structuredContent: {
+              ok: true,
+              tool: "git_query",
+              action: "history",
+              project_path: projectPath,
+              commit_ref: args.commit_ref || null,
+              commit_range: args.commit_range || null,
+              commits
+            }
           });
 
         case "list_files":
@@ -585,15 +644,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           });
 
         case "compare":
-          const src = args.source || "HEAD";
-          const tgt = args.target;
-          if (!tgt) throw new Error("target obbligatorio per compare.");
+          const leftInput = args.left_ref || args.source || "HEAD";
+          const rightInput = args.right_ref || args.target;
+          if (!rightInput) throw new Error("target/right_ref obbligatorio per compare.");
+          const leftRef = await ensureResolvableRef(leftInput, projectPath, "left_ref/source");
+          const rightRef = await ensureResolvableRef(rightInput, projectPath, "right_ref/target");
           const diffMode = args.diff_mode === "two_dot" ? "two_dot" : "three_dot";
           const separator = diffMode === "two_dot" ? ".." : "...";
           const nameOnly = args.name_only ? "--name-only" : "";
           const statFlag = args.stat ? "--stat" : "";
           const compFilter = args.file_path ? ` -- "${args.file_path}"` : "";
-          const compOut = await runGit(`diff ${nameOnly} ${statFlag} ${tgt}${separator}${src}${compFilter}`, projectPath);
+          const compOut = await runGit(`diff ${nameOnly} ${statFlag} ${leftRef}${separator}${rightRef}${compFilter}`, projectPath);
+          const nameStatusOut = await runGit(`diff --name-status ${leftRef}..${rightRef}${compFilter}`, projectPath);
+          const rawFiles = parseNameStatus(nameStatusOut);
+          const files = await Promise.all(rawFiles.map(async (entry) => {
+            const candidatePath = entry.path || args.file_path;
+            const existsInLeft = candidatePath ? await fileExistsInRef(leftRef, candidatePath, projectPath) : false;
+            const existsInRight = candidatePath ? await fileExistsInRef(rightRef, candidatePath, projectPath) : false;
+            return {
+              path: candidatePath,
+              exists_in_left: existsInLeft,
+              exists_in_right: existsInRight,
+              change_type: entry.change_type,
+              raw_status: entry.raw_status
+            };
+          }));
           const hasDiff = Boolean(compOut && compOut.trim());
           return makeSuccessResult({
             text: compOut || "Nessuna differenza.",
@@ -602,11 +677,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               tool: "git_diff",
               action: "compare",
               project_path: projectPath,
-              source: src,
-              target: tgt,
+              source: leftRef,
+              target: rightRef,
+              left_ref: leftRef,
+              right_ref: rightRef,
+              diff_direction: "left_to_right",
+              diff_sides: {
+                a_path_prefix: leftRef,
+                b_path_prefix: rightRef
+              },
               diff_mode: diffMode,
               stat: args.stat === true,
               has_diff: hasDiff,
+              files,
               output: compOut || ""
             }
           });
