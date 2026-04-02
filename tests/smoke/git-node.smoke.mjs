@@ -88,6 +88,9 @@ await runSmoke({
     if (rangeDiffResult?.isError || rangeDiffResult?.structuredContent?.action !== 'range_diff') {
       throw new Error(`git_diff range_diff failed: ${JSON.stringify(rangeDiffResult)}`);
     }
+    if (!rangeDiffResult?.structuredContent?.range_summary || !rangeDiffResult?.structuredContent?.semantic_hint) {
+      throw new Error(`git_diff range_diff missing semantic fields: ${JSON.stringify(rangeDiffResult)}`);
+    }
 
     const listDetailedResult = await request('tools/call', {
       name: 'git_conflict_manager',

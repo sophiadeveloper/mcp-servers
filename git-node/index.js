@@ -99,6 +99,70 @@ function parseCommitRange(value) {
   if (!left || !right) return null;
   return { left, right, raw: normalized };
 }
+
+function parseRangeDiffOutput(rangeDiffOut) {
+  const summary = {
+    unchanged: 0,
+    changed: 0,
+    only_left: 0,
+    only_right: 0,
+    left_only_commits: [],
+    right_only_commits: [],
+    changed_pairs: []
+  };
+
+  if (!rangeDiffOut || !rangeDiffOut.trim()) return summary;
+
+  const lines = rangeDiffOut.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const leftOnlyMatch = trimmed.match(/^\d+:\s+([0-9a-f]+)\s+<\s+-:/i);
+    if (leftOnlyMatch) {
+      summary.only_left += 1;
+      summary.left_only_commits.push(leftOnlyMatch[1]);
+      continue;
+    }
+
+    const rightOnlyMatch = trimmed.match(/^-:\s+[-.]+\s+>\s+\d+:\s+([0-9a-f]+)/i);
+    if (rightOnlyMatch) {
+      summary.only_right += 1;
+      summary.right_only_commits.push(rightOnlyMatch[1]);
+      continue;
+    }
+
+    const unchangedMatch = trimmed.match(/^\d+:\s+([0-9a-f]+)\s+=\s+\d+:\s+([0-9a-f]+)/i);
+    if (unchangedMatch) {
+      summary.unchanged += 1;
+      continue;
+    }
+
+    const changedMatch = trimmed.match(/^\d+:\s+([0-9a-f]+)\s+!\s+\d+:\s+([0-9a-f]+)/i);
+    if (changedMatch) {
+      summary.changed += 1;
+      summary.changed_pairs.push({
+        original_commit: changedMatch[1],
+        rewritten_commit: changedMatch[2]
+      });
+    }
+  }
+
+  return summary;
+}
+
+function buildRangeDiffHint(summary) {
+  if (summary.only_left > 0 && summary.only_right === 0 && summary.unchanged === 0 && summary.changed === 0) {
+    return "Le commit risultano presenti solo nel range originale: verifica che rewritten_range punti al branch rebased corretto e che i due range siano equivalenti.";
+  }
+  if (summary.only_left === 0 && summary.only_right === 0 && summary.changed === 0) {
+    return "Le serie di commit sembrano equivalenti.";
+  }
+  if (summary.changed > 0 && summary.only_left === 0 && summary.only_right === 0) {
+    return "Le commit sono abbinate ma modificate: possibile reword/edit/squash parziale.";
+  }
+  return "Output con differenze miste: controlla commit solo a sinistra/destra e coppie cambiate per validare la semantica del confronto.";
+}
 async function runGitSafe(command, projectPath) {
   try {
     return await runGit(command, projectPath);
@@ -580,6 +644,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
 
           const hasRangeDiff = Boolean(rangeDiffOut && rangeDiffOut.trim());
+          const rangeSummary = parseRangeDiffOutput(rangeDiffOut);
+          const semanticHint = buildRangeDiffHint(rangeSummary);
           return makeSuccessResult({
             text: rangeDiffOut || "Nessuna differenza tra le due serie di commit.",
             structuredContent: {
@@ -590,6 +656,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               original_range: originalRange,
               rewritten_range: rewrittenRange,
               has_diff: hasRangeDiff,
+              range_summary: rangeSummary,
+              semantic_hint: semanticHint,
               output: rangeDiffOut || ""
             }
           });
