@@ -221,6 +221,32 @@ function parseNameStatus(output) {
     });
 }
 
+function parseStatusShort(output) {
+  if (!output || !output.trim()) return [];
+
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => {
+      const xy = line.slice(0, 2);
+      const statusCode = xy.trim() || "??";
+      const pathPart = line.slice(3).trim();
+      const [fromPath, toPath] = pathPart.includes(" -> ")
+        ? pathPart.split(" -> ")
+        : [pathPart, null];
+      return {
+        xy,
+        status_code: statusCode,
+        index_status: xy.charAt(0) === " " ? null : xy.charAt(0),
+        worktree_status: xy.charAt(1) === " " ? null : xy.charAt(1),
+        path: toPath || fromPath || null,
+        from_path: fromPath || null,
+        to_path: toPath || null
+      };
+    });
+}
+
 function detectBomAndEncoding(fileBuffer) {
   if (!fileBuffer || fileBuffer.length === 0) {
     return { has_bom: false, bom: null, encoding_hint: "utf-8/unknown" };
@@ -302,6 +328,8 @@ async function getRebaseStatus(projectPath) {
       in_progress: false,
       mode: null,
       commit_in_replay: null,
+      current_index: null,
+      total_commits: null,
       todo_remaining: 0,
       conflict_files: [],
       suggested_next_step: "none"
@@ -539,9 +567,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       switch (args.action) {
         case "status":
           const statusOut = await runGit("status -s", projectPath);
+          const statusEntries = parseStatusShort(statusOut);
           return makeSuccessResult({
             text: statusOut || "Clean.",
-            structuredContent: { ok: true, tool: "git_query", action: "status", project_path: projectPath, output: statusOut || "Clean." }
+            structuredContent: {
+              ok: true,
+              tool: "git_query",
+              action: "status",
+              project_path: projectPath,
+              clean: statusEntries.length === 0,
+              entries: statusEntries,
+              output: statusOut || "Clean."
+            }
           });
 
         case "history":
