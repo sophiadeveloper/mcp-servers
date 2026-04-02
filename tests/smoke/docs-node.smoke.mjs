@@ -36,6 +36,31 @@ function extractJsonFromToolResult(result) {
   throw new Error(`Tool response did not include JSON payload: ${JSON.stringify(result)}`);
 }
 
+function matchesUriTemplate(uriTemplate, uri) {
+  if (typeof uriTemplate !== 'string' || typeof uri !== 'string') {
+    return false;
+  }
+
+  const templateParts = uriTemplate.split('/');
+  const uriParts = uri.split('/');
+
+  if (templateParts.length !== uriParts.length) {
+    return false;
+  }
+
+  for (let index = 0; index < templateParts.length; index += 1) {
+    const templatePart = templateParts[index];
+    const uriPart = uriParts[index];
+    const isTemplateVariable = templatePart.startsWith('{') && templatePart.endsWith('}');
+
+    if (!isTemplateVariable && templatePart !== uriPart) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 await runSmoke({
   serverName: 'docs-node',
   command: process.execPath,
@@ -198,6 +223,31 @@ await runSmoke({
       if (template.mimeType !== undefined && typeof template.mimeType !== 'string') {
         throw new Error(`resource template mimeType must be a string when present: ${JSON.stringify(template)}`);
       }
+    }
+
+    const shelfOrDocumentResourceUris = resourcesListResult.resources
+      .map((resource) => resource?.uri)
+      .filter((uri) => typeof uri === 'string' && (uri.startsWith('docs://shelf/') || uri.startsWith('docs://document/')));
+    if (shelfOrDocumentResourceUris.length === 0) {
+      throw new Error(`resources/list did not return any shelf/document URI to validate against templates: ${JSON.stringify(resourcesListResult)}`);
+    }
+
+    const shelfOrDocumentTemplates = templatesResult.resourceTemplates
+      .map((template) => template?.uriTemplate)
+      .filter((uriTemplate) =>
+        typeof uriTemplate === 'string' && (uriTemplate.startsWith('docs://shelf/') || uriTemplate.startsWith('docs://document/'))
+      );
+    if (shelfOrDocumentTemplates.length === 0) {
+      throw new Error(`resources/templates/list did not expose shelf/document uriTemplate values: ${JSON.stringify(templatesResult)}`);
+    }
+
+    const hasCoherentShelfOrDocumentUri = shelfOrDocumentResourceUris.some((uri) =>
+      shelfOrDocumentTemplates.some((uriTemplate) => matchesUriTemplate(uriTemplate, uri))
+    );
+    if (!hasCoherentShelfOrDocumentUri) {
+      throw new Error(
+        `No shelf/document URI from resources/list matched exposed uriTemplate values. URIs=${JSON.stringify(shelfOrDocumentResourceUris)} templates=${JSON.stringify(shelfOrDocumentTemplates)}`
+      );
     }
   }
 });
