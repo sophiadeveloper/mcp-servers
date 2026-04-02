@@ -49,6 +49,7 @@ await runSmoke({
       throw new Error(`git_query history missing structured commits: ${JSON.stringify(historyResult)}`);
     }
     const leftHistoryTip = historyResult?.structuredContent?.commits?.[0]?.hash;
+    const leftParentRef = `${leftHistoryTip}^`;
 
     const commitInfoResult = await request('tools/call', {
       name: 'git_query',
@@ -139,6 +140,25 @@ await runSmoke({
     });
     if (compareIdentical?.isError || compareIdentical?.structuredContent?.has_diff !== false) {
       throw new Error(`git_diff compare identical.txt should have no diff: ${JSON.stringify(compareIdentical)}`);
+    }
+
+    const compareExplicitRefs = await request('tools/call', {
+      name: 'git_diff',
+      arguments: {
+        action: 'compare',
+        project_path: repoPath,
+        left_ref: leftParentRef,
+        right_ref: leftHistoryTip,
+        diff_mode: 'two_dot',
+        stat: true
+      }
+    });
+    if (compareExplicitRefs?.isError || compareExplicitRefs?.structuredContent?.has_diff !== true) {
+      throw new Error(`git_diff compare explicit refs failed: ${JSON.stringify(compareExplicitRefs)}`);
+    }
+    const explicitFiles = compareExplicitRefs?.structuredContent?.files || [];
+    if (!explicitFiles.find((f) => f.path === 'shared.txt' && f.change_type === 'M')) {
+      throw new Error(`git_diff compare explicit refs missing shared.txt metadata: ${JSON.stringify(compareExplicitRefs)}`);
     }
 
     const rangeDiffResult = await request('tools/call', {

@@ -183,12 +183,11 @@ async function ensureResolvableRef(ref, projectPath, argName = "ref") {
   }
 
   try {
-    await runGit(`rev-parse --verify ${shellQuote(`${normalizedRef}^{commit}`)}`, projectPath);
+    const resolvedCommit = await runGit(`rev-parse --verify ${shellQuote(`${normalizedRef}^{commit}`)}`, projectPath);
+    return resolvedCommit.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || resolvedCommit;
   } catch {
     throw new Error(`${argName} non risolvibile: ${normalizedRef}`);
   }
-
-  return normalizedRef;
 }
 
 async function fileExistsInRef(ref, filePath, projectPath) {
@@ -654,8 +653,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const nameOnly = args.name_only ? "--name-only" : "";
           const statFlag = args.stat ? "--stat" : "";
           const compFilter = args.file_path ? ` -- "${args.file_path}"` : "";
-          const compOut = await runGit(`diff ${nameOnly} ${statFlag} ${leftRef}${separator}${rightRef}${compFilter}`, projectPath);
-          const nameStatusOut = await runGit(`diff --name-status ${leftRef}..${rightRef}${compFilter}`, projectPath);
+          const compareRange = `${leftRef}${separator}${rightRef}`;
+          const nameStatusRange = `${leftRef}..${rightRef}`;
+          const compOut = await runGit(`diff ${nameOnly} ${statFlag} ${shellQuote(compareRange)}${compFilter}`, projectPath);
+          const nameStatusOut = await runGit(`diff --name-status ${shellQuote(nameStatusRange)}${compFilter}`, projectPath);
           const rawFiles = parseNameStatus(nameStatusOut);
           const files = await Promise.all(rawFiles.map(async (entry) => {
             const candidatePath = entry.path || args.file_path;
