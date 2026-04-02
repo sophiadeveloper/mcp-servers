@@ -48,6 +48,21 @@ await runSmoke({
     if (!historyResult?.structuredContent?.commits?.length) {
       throw new Error(`git_query history missing structured commits: ${JSON.stringify(historyResult)}`);
     }
+
+    const statusResult = await request('tools/call', {
+      name: 'git_query',
+      arguments: {
+        action: 'status',
+        project_path: repoPath
+      }
+    });
+    if (statusResult?.isError || !Array.isArray(statusResult?.structuredContent?.entries)) {
+      throw new Error(`git_query status missing structured entries: ${JSON.stringify(statusResult)}`);
+    }
+    const isClean = statusResult?.structuredContent?.entries?.length === 0;
+    if (statusResult?.structuredContent?.clean !== isClean) {
+      throw new Error(`git_query status clean flag mismatch: ${JSON.stringify(statusResult)}`);
+    }
     const leftHistoryTip = historyResult?.structuredContent?.commits?.[0]?.hash;
     const leftParentRef = `${leftHistoryTip}^`;
 
@@ -86,6 +101,9 @@ await runSmoke({
     });
     if (rebaseStatusResult?.isError || rebaseStatusResult?.structuredContent?.rebase_status?.in_progress !== false) {
       throw new Error(`git_query rebase_status failed: ${JSON.stringify(rebaseStatusResult)}`);
+    }
+    if (rebaseStatusResult?.structuredContent?.rebase_status?.current_index !== null || rebaseStatusResult?.structuredContent?.rebase_status?.total_commits !== null) {
+      throw new Error(`git_query rebase_status should expose stable null counters when idle: ${JSON.stringify(rebaseStatusResult)}`);
     }
 
     const compareResult = await request('tools/call', {
