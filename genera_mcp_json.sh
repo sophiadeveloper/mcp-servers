@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Script di generazione file locale MCP per Ubuntu/Linux
 # Data: 2026-03-09
 
@@ -61,7 +62,7 @@ echo "-------------------------------------------"
 
 # Utilizziamo Node.js inline per manipolare il JSON in modo sicuro
 # ed evitare problemi di sintassi o BOM
-node -e "
+node <<'NODE'
 const fs = require('fs');
 const path = require('path');
 
@@ -149,4 +150,4 @@ for (const [name, config] of Object.entries(settings.mcpServers)) {
 const settingsTomlPath = path.join(rootDir, 'settings.toml');
 fs.writeFileSync(settingsTomlPath, tomlLines.join('\n'), 'utf8');
 console.log('\x1b[32mFile TOML generato con successo in: ' + settingsTomlPath + '\x1b[0m');
-"
+NODE
