@@ -970,7 +970,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     if (parsed.type === "shelf") {
       const shelf = await getShelfById(parsed.shelfId);
       const documents = await allQuery(
-        `SELECT d.id, d.title, d.file_path, d.updated_at
+        `SELECT d.id, d.title, d.file_path, d.scanned_at
          FROM documents d
          WHERE d.shelf_id = ?
          ORDER BY d.title`,
