@@ -569,8 +569,35 @@ Fare di `docs-node` il primo server con resources reali.
 
 ### Esempio URI
 
-- `docs://shelf/tesisquare-pte/doc/123`
-- `docs://shelf/coding-standards/doc/57`
+- `docs://shelf/12-platform-guides`
+- `docs://document/245`
+
+### Convenzione URI operativa (`docs://...`)
+
+Per evitare rotture su rename e garantire mapping deterministico tra record DB e risorse MCP:
+
+- shelf URI: `docs://shelf/{shelf_id}-{slug_opzionale}`
+  - chiave primaria: `shelf_id`
+  - `slug_opzionale` e' solo descrittivo, non usato come chiave di lookup
+- document URI: `docs://document/{document_id}`
+  - chiave primaria: `document.id`
+- helper consigliati in `docs-node/index.js`:
+  - `buildShelfUri(shelfId, shelfName)`
+  - `buildDocumentUri(documentId)`
+  - `parseDocsUri(uri)`
+
+Esempi concreti:
+
+- `docs://shelf/12-platform-guides`
+- `docs://shelf/12` (valido: stesso scaffale, slug assente)
+- `docs://document/245`
+
+Regole di validazione minime in `resources/read`:
+
+- rifiutare URI non `docs://`
+- rifiutare path con segmentazione inattesa
+- errore esplicito su identificatore non numerico/<=0
+- errore esplicito su shelf/document non trovato
 
 ### Criteri di accettazione
 

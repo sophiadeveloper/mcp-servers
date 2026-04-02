@@ -78,30 +78,78 @@ function jsonText(value) {
   return JSON.stringify(value, null, 2);
 }
 
-function buildShelfResourceUri(shelfName) {
-  return `docs://shelf/${encodeURIComponent(shelfName)}`;
+function slugifyShelfName(shelfName) {
+  const normalized = String(shelfName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "shelf";
 }
 
-function buildDocumentResourceUri(documentId) {
-  return `docs://document/${encodeURIComponent(String(documentId))}`;
+function normalizePositiveInteger(value, fieldName) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${fieldName} deve essere un intero positivo.`);
+  }
+  return parsed;
 }
 
-function parseResourceUri(uri) {
-  const shelfMatch = /^docs:\/\/shelf\/(.+)$/.exec(uri);
-  if (shelfMatch) {
-    return { type: "shelf", shelf: decodeURIComponent(shelfMatch[1]) };
+function buildShelfUri(shelfId, shelfName = "") {
+  const normalizedShelfId = normalizePositiveInteger(shelfId, "shelf_id");
+  const slug = slugifyShelfName(shelfName);
+  return `docs://shelf/${encodeURIComponent(`${normalizedShelfId}-${slug}`)}`;
+}
+
+function buildDocumentUri(documentId) {
+  const normalizedDocumentId = normalizePositiveInteger(documentId, "document_id");
+  return `docs://document/${encodeURIComponent(String(normalizedDocumentId))}`;
+}
+
+function parseDocsUri(uri) {
+  if (typeof uri !== "string" || uri.trim() === "") {
+    throw new Error("URI resource mancante o non valida: atteso valore stringa non vuoto.");
   }
 
-  const documentMatch = /^docs:\/\/document\/(.+)$/.exec(uri);
-  if (documentMatch) {
-    const idValue = Number(decodeURIComponent(documentMatch[1]));
-    if (!Number.isFinite(idValue) || idValue <= 0) {
-      throw new Error(`URI documento non valida: ${uri}`);
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(uri);
+  } catch {
+    throw new Error(`URI resource malformata: "${uri}". Formato atteso: docs://<type>/<id>.`);
+  }
+
+  if (parsedUrl.protocol !== "docs:") {
+    throw new Error(`Schema URI non supportato: "${parsedUrl.protocol}". Usare schema "docs://".`);
+  }
+
+  const resourceType = parsedUrl.hostname;
+  const rawPathSegments = parsedUrl.pathname.split("/").filter(Boolean);
+  if (rawPathSegments.length !== 1) {
+    throw new Error(`URI resource non valida: "${uri}". Path atteso con un solo segmento identificativo.`);
+  }
+
+  const identifier = decodeURIComponent(rawPathSegments[0]);
+  if (!identifier) {
+    throw new Error(`URI resource non valida: "${uri}". Identificatore mancante.`);
+  }
+
+  if (resourceType === "shelf") {
+    const match = /^(\d+)(?:-.+)?$/.exec(identifier);
+    if (!match) {
+      throw new Error(
+        `URI shelf non valida: "${uri}". Formato atteso: docs://shelf/<shelf_id>[-slug].`
+      );
     }
-    return { type: "document", documentId: Math.floor(idValue) };
+    return { type: "shelf", shelfId: normalizePositiveInteger(match[1], "shelf_id") };
   }
 
-  throw new Error(`URI resource non supportata: ${uri}`);
+  if (resourceType === "document") {
+    return { type: "document", documentId: normalizePositiveInteger(identifier, "document_id") };
+  }
+
+  throw new Error(
+    `Tipo resource non supportato: "${resourceType}". Valori supportati: shelf, document.`
+  );
 }
 
 function normalizePathValue(inputPath) {
@@ -286,6 +334,13 @@ async function getShelfByName(name) {
   return shelf;
 }
 
+async function getShelfById(shelfId) {
+  const normalizedShelfId = normalizePositiveInteger(shelfId, "shelf_id");
+  const shelf = await getQuery("SELECT * FROM shelves WHERE id = ?", [normalizedShelfId]);
+  if (!shelf) throw new Error(`Scaffale non trovato con shelf_id: ${normalizedShelfId}`);
+  return shelf;
+}
+
 async function ensureScanSource(sourceType, sourcePath, shelfId, recursive = false) {
   const normalizedType = sourceType === "folder" ? "folder" : "file";
   const normalizedSourcePath = normalizePathValue(sourcePath);
@@ -432,10 +487,7 @@ async function validateKnownTags(tagNames) {
 }
 
 async function ensureDocumentExists(documentId) {
-  const normalizedId = Number(documentId);
-  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
-    throw new Error("document_id deve essere un intero positivo.");
-  }
+  const normalizedId = normalizePositiveInteger(documentId, "document_id");
 
   const document = await getQuery(
     `SELECT d.*, s.name AS shelf_name
@@ -503,7 +555,7 @@ async function searchDocuments(args) {
 
   if (hasQuery && hasFTS5) {
     let sql = `
-      SELECT d.id, d.title, d.file_path, s.name AS shelf_name,
+      SELECT d.id, d.title, d.file_path, s.id AS shelf_id, s.name AS shelf_name,
              snippet(documents_fts, 1, '>>>', '<<<', '...', 40) AS snippet
       FROM documents_fts
       JOIN documents d ON d.id = documents_fts.rowid
@@ -524,7 +576,7 @@ async function searchDocuments(args) {
     rows = await allQuery(sql, params);
   } else if (hasQuery) {
     let sql = `
-      SELECT d.id, d.title, d.file_path, d.content, s.name AS shelf_name
+      SELECT d.id, d.title, d.file_path, d.content, s.id AS shelf_id, s.name AS shelf_name
       FROM documents d
       JOIN shelves s ON s.id = d.shelf_id
       WHERE (d.title LIKE ? OR d.content LIKE ?)`;
@@ -546,12 +598,13 @@ async function searchDocuments(args) {
       id: row.id,
       title: row.title,
       file_path: row.file_path,
+      shelf_id: row.shelf_id,
       shelf_name: row.shelf_name,
       snippet: formatSnippet(row.content, args.query.trim())
     }));
   } else {
     let sql = `
-      SELECT d.id, d.title, d.file_path, s.name AS shelf_name
+      SELECT d.id, d.title, d.file_path, s.id AS shelf_id, s.name AS shelf_name
       FROM documents d
       JOIN shelves s ON s.id = d.shelf_id
       WHERE 1 = 1`;
@@ -574,7 +627,11 @@ async function searchDocuments(args) {
     rows = await attachTagsToRows(rows);
   }
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    uri: buildDocumentUri(row.id),
+    shelf_uri: buildShelfUri(row.shelf_id, row.shelf_name)
+  }));
 }
 
 async function listDocuments(args) {
@@ -586,8 +643,7 @@ async function listDocuments(args) {
     throw new Error("I filtri tag e tagged=false non sono compatibili.");
   }
 
-  let sql = `SELECT d.id, d.title, d.file_path, d.size_bytes`;
-  if (includeShelfName) sql += ", s.name AS shelf_name";
+  let sql = "SELECT d.id, d.title, d.file_path, d.size_bytes, s.id AS shelf_id, s.name AS shelf_name";
   sql += " FROM documents d JOIN shelves s ON s.id = d.shelf_id WHERE 1 = 1";
 
   const params = [];
@@ -620,7 +676,21 @@ async function listDocuments(args) {
     rows = await attachTagsToRows(rows);
   }
 
-  return rows;
+  return rows.map((row) => {
+    const baseRow = {
+      id: row.id,
+      title: row.title,
+      file_path: row.file_path,
+      size_bytes: row.size_bytes,
+      shelf_id: row.shelf_id,
+      uri: buildDocumentUri(row.id),
+      shelf_uri: buildShelfUri(row.shelf_id, row.shelf_name)
+    };
+
+    if (includeShelfName) baseRow.shelf_name = row.shelf_name;
+    if (includeTags && row.tags) baseRow.tags = row.tags;
+    return baseRow;
+  });
 }
 
 async function collectFeatureStatus() {
@@ -870,13 +940,13 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 
     const resources = [
       ...shelves.map((shelf) => ({
-        uri: buildShelfResourceUri(shelf.name),
+        uri: buildShelfUri(shelf.id, shelf.name),
         name: `Shelf: ${shelf.name}`,
         description: `${shelf.description || "Scaffale documentazione"} (documenti: ${shelf.document_count})`,
         mimeType: "application/json"
       })),
       ...documents.map((document) => ({
-        uri: buildDocumentResourceUri(document.id),
+        uri: buildDocumentUri(document.id),
         name: `Document: ${document.title}`,
         description: `${document.shelf_name} · ${document.file_path}`,
         mimeType: "text/markdown"
@@ -893,10 +963,10 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const { uri } = request.params;
 
   try {
-    const parsed = parseResourceUri(uri);
+    const parsed = parseDocsUri(uri);
 
     if (parsed.type === "shelf") {
-      const shelf = await getShelfByName(parsed.shelf);
+      const shelf = await getShelfById(parsed.shelfId);
       const documents = await allQuery(
         `SELECT d.id, d.title, d.file_path, d.updated_at
          FROM documents d
@@ -904,16 +974,22 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
          ORDER BY d.title`,
         [shelf.id]
       );
+      const documentsWithUri = documents.map((document) => ({
+        ...document,
+        uri: buildDocumentUri(document.id)
+      }));
 
       return {
         contents: [{
-          uri,
+          uri: buildShelfUri(shelf.id, shelf.name),
           mimeType: "application/json",
           text: jsonText({
+            shelf_id: shelf.id,
             shelf: shelf.name,
+            uri: buildShelfUri(shelf.id, shelf.name),
             description: shelf.description,
-            document_count: documents.length,
-            documents
+            document_count: documentsWithUri.length,
+            documents: documentsWithUri
           })
         }]
       };
@@ -922,7 +998,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const document = await ensureDocumentExists(parsed.documentId);
     return {
       contents: [{
-        uri,
+        uri: buildDocumentUri(document.id),
         mimeType: "text/markdown",
         text: document.content
       }]
@@ -937,9 +1013,9 @@ server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
     return {
       resourceTemplates: [
         {
-          uriTemplate: "docs://shelf/{shelf}",
+          uriTemplate: "docs://shelf/{shelf_id}-{shelf_slug}",
           name: "Shelf documents",
-          description: "Lista documenti per scaffale (parametro: shelf).",
+          description: "Lista documenti per scaffale (parametri: shelf_id obbligatorio, shelf_slug opzionale informativa).",
           mimeType: "application/json"
         },
         {
@@ -1122,13 +1198,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         case "list_shelves": {
           const shelves = await allQuery(
-            `SELECT s.name, s.description, COUNT(d.id) AS document_count
+            `SELECT s.id AS shelf_id, s.name, s.description, COUNT(d.id) AS document_count
              FROM shelves s
              LEFT JOIN documents d ON d.shelf_id = s.id
              GROUP BY s.id
              ORDER BY s.name`
           );
-          return responseFromBlocks([jsonText(shelves)]);
+          const shelvesWithUri = shelves.map((shelf) => ({
+            ...shelf,
+            uri: buildShelfUri(shelf.shelf_id, shelf.name)
+          }));
+          return responseFromBlocks([jsonText(shelvesWithUri)]);
         }
 
         case "create_shelf": {
