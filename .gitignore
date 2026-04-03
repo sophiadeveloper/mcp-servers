@@ -20,3 +20,4 @@
 **/docs-node/docs.db*
 settings.json
 settings.toml
+office-node/artifact-registry.json
