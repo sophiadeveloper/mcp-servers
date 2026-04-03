@@ -2,6 +2,18 @@
 
 Usa questo riferimento quando il task richiede una sequenza esplicita di piu skill.
 
+## Tabella decisionale rapida: prompt MCP vs skill
+
+| Caso | Prompt MCP | Skill |
+| --- | --- | --- |
+| Workflow ricorrente, breve e standard | Prima scelta per avvio rapido nel client | Opzionale come fallback |
+| Analisi multi-sorgente con evidenze eterogenee | Solo kickoff/brief iniziale | Prima scelta: `mcp-technical-analyst` |
+| Task multi-fase con dipendenze tra domini | Utile come ingresso guidato | Prima scelta: `mcp-master-orchestrator` + skill sidecar |
+| Task mono-dominio (DB, docs, browser, office, CF) | Utile se il caso e' semplice e ripetibile | Prima scelta: skill specialistica |
+| Supporto client MCP parziale/non uniforme | Non usarlo come unico canale | Mantieni sempre il percorso skill completo |
+
+Regola pratica: prompt MCP per discoverability e start rapido; skill per esecuzione completa, portabile e verificabile.
+
 ## Analisi Tecnica Multi-Sorgente
 
 1. `mcp-technical-analyst`: imposta intake, fonti, deliverable e gap aperti.
