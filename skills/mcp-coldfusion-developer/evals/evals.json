@@ -1,0 +1,40 @@
+{
+  "skill_name": "mcp-coldfusion-developer",
+  "eval_focus": [
+    "audit-lint-default-no-fix",
+    "explicit-remediation-fix-true-only",
+    "post-fix-validation-and-handoff"
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Analizza `handlers/order.cfc` e `views/order/edit.cfm`: esegui lint e riporta solo i problemi trovati.",
+      "expected_output": "Audit lint in sola lettura, con elenco issue e nessuna modifica automatica ai file.",
+      "expectations": [
+        "Esegue lint_code su file CFML in modalita audit",
+        "Non usa fix: true in assenza di richiesta esplicita",
+        "Restituisce severita, posizione e sintesi dei problemi"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Procedi con remediation del lint su `views/order/edit.cfm`; e' autorizzato fix automatico solo dove sicuro.",
+      "expected_output": "Remediation con fix: true dichiarato esplicitamente e report delle correzioni applicate.",
+      "expectations": [
+        "Attiva fix: true solo perche la richiesta lo esplicita",
+        "Documenta quali fix sono stati applicati e quali no",
+        "Mantiene fallback manuale per warning non autofixabili"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Dopo la fix, valida il flusso UI di checkout e consegna handoff finale con note browser e aggiornamento docs operative.",
+      "expected_output": "Post-fix validation completa con check browser, verifica regressioni e handoff verso documentazione aggiornata.",
+      "expectations": [
+        "Esegue validazione post-fix sul percorso utente rilevante",
+        "Produce handoff esplicito a mcp-browser-automation per verifica UI",
+        "Allinea o propone aggiornamento docs tramite mcp-docs-navigator"
+      ]
+    }
+  ]
+}
