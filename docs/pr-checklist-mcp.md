@@ -20,3 +20,8 @@ Aggiungere una sezione breve, per esempio:
 - **Compatibilita'**: Nessuna rottura backward dei tool name / oppure migrazione documentata.
 - **Cross-host risk**: Basso/Medio/Alto + motivazione.
 - **Restart richiesto**: Sì/No (Sì se e' cambiato codice MCP).
+
+## Riferimenti
+
+- Guida viva: `docs/mcp-skills-agents-development-guide.md`
+- Storico milestone completate: `docs/completed-milestones-mcp-skills.md`

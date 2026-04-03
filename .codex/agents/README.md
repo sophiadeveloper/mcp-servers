@@ -14,3 +14,8 @@ Profili disponibili con confini espliciti e anti-overlap:
 ## Compatibilita' con skill consolidate
 - Per intake/analisi tecnica multi-sorgente, allinea il profilo `technical_analyst` con la skill `mcp-technical-analyst`.
 - Per task multi-fase con handoff, applica i profili agenti sotto coordinamento della skill `mcp-master-orchestrator` e dei suoi limiti di parallelismo/profondita'.
+
+
+## Riferimento guida viva
+- Documentazione operativa corrente: `docs/mcp-skills-agents-development-guide.md`.
+- Storico decisioni/milestone completate: `docs/completed-milestones-mcp-skills.md`.

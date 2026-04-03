@@ -2,6 +2,10 @@
 
 Questa matrice sintetizza lo stato delle skill principali richieste per Milestone 0, con focus su:
 
+Riferimenti di governance aggiornati:
+- guida viva: `docs/mcp-skills-agents-development-guide.md`
+- storico milestone completate: `docs/completed-milestones-mcp-skills.md`
+
 - precisione dei trigger;
 - separazione tra contenuti core (`SKILL.md`) e approfondimenti (`references/`);
 - supporto script operativo;
