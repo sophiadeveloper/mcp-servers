@@ -88,6 +88,33 @@ function appendToArtifactRegistry({ savePath, mimeType, producerTool }) {
   }
 }
 
+function buildWriteArtifactResponse({ tool, action, savePath, mimeType, summary }) {
+  const registryResult = appendToArtifactRegistry({
+    savePath,
+    mimeType,
+    producerTool: `${tool}.${action}`,
+  });
+  const resourceLink = registryResult.record.artifact_uri;
+  const registryLines = registryResult.available
+    ? [`Artifact URI: ${resourceLink}`, `Registry: ${OFFICE_ARTIFACT_REGISTRY_PATH}`]
+    : [
+        `Artifact URI: ${resourceLink} (warning: registry non aggiornato)`,
+        "Registry warning: write completato con fallback legacy su save_path.",
+      ];
+
+  return {
+    content: [{ type: "text", text: [summary, ...registryLines].join("\n") }],
+    structuredContent: {
+      ok: true,
+      tool,
+      action,
+      save_path: savePath,
+      resource_link: resourceLink,
+      mime_type: mimeType,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // .docx helpers
 // ---------------------------------------------------------------------------
@@ -566,11 +593,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const doc = new Document({ sections: [{ children }] });
           const buffer = await Packer.toBuffer(doc);
           fs.writeFileSync(resolvedPath, buffer);
-          return {
-            content: [
-              { type: "text", text: `OK Documento creato: ${resolvedPath} (${blocks.length} paragrafi)` },
-            ],
-          };
+          return buildWriteArtifactResponse({
+            tool: "word_document",
+            action: "create",
+            savePath: resolvedPath,
+            mimeType:
+              path.extname(resolvedPath).toLowerCase() === ".doc"
+                ? "application/msword"
+                : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            summary: `OK Documento creato: ${resolvedPath} (${blocks.length} paragrafi)`,
+          });
         }
 
         case "edit_paragraph": {
@@ -590,9 +622,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
           setParagraphText(dom, paragraphs[paragraph_index], text);
           saveDocx(zip, dom, resolvedPath);
-          return {
-            content: [{ type: "text", text: `OK Paragrafo ${paragraph_index} aggiornato.` }],
-          };
+          return buildWriteArtifactResponse({
+            tool: "word_document",
+            action: "edit_paragraph",
+            savePath: resolvedPath,
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            summary: `OK Paragrafo ${paragraph_index} aggiornato.`,
+          });
         }
 
         case "insert_paragraph": {
@@ -619,9 +655,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             body.insertBefore(newPara, paragraphs[paragraph_index]);
           }
           saveDocx(zip, dom, resolvedPath);
-          return {
-            content: [{ type: "text", text: `OK Paragrafo inserito alla posizione ${paragraph_index}.` }],
-          };
+          return buildWriteArtifactResponse({
+            tool: "word_document",
+            action: "insert_paragraph",
+            savePath: resolvedPath,
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            summary: `OK Paragrafo inserito alla posizione ${paragraph_index}.`,
+          });
         }
 
         case "delete_paragraph": {
@@ -642,9 +682,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const para = paragraphs[paragraph_index];
           para.parentNode.removeChild(para);
           saveDocx(zip, dom, resolvedPath);
-          return {
-            content: [{ type: "text", text: `OK Paragrafo ${paragraph_index} eliminato.` }],
-          };
+          return buildWriteArtifactResponse({
+            tool: "word_document",
+            action: "delete_paragraph",
+            savePath: resolvedPath,
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            summary: `OK Paragrafo ${paragraph_index} eliminato.`,
+          });
         }
 
         default:
@@ -729,14 +773,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           XLSX.utils.sheet_add_aoa(sheet, values, { origin: start_cell });
           XLSX.writeFile(workbook, resolvedPath);
 
-          return {
-            content: [
-              {
-                type: "text",
-                text: `OK ${values.length} righe scritte nel foglio "${targetName}" a partire da ${start_cell}.`,
-              },
-            ],
-          };
+          return buildWriteArtifactResponse({
+            tool: "excel_document",
+            action: "write_cells",
+            savePath: resolvedPath,
+            mimeType:
+              path.extname(resolvedPath).toLowerCase() === ".xls"
+                ? "application/vnd.ms-excel"
+                : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            summary: `OK ${values.length} righe scritte nel foglio "${targetName}" a partire da ${start_cell}.`,
+          });
         }
 
         case "create": {
@@ -755,14 +801,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
 
           XLSX.writeFile(workbook, resolvedPath);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `OK Workbook creato: ${resolvedPath} (${sheets.length} fogli)`,
-              },
-            ],
-          };
+          return buildWriteArtifactResponse({
+            tool: "excel_document",
+            action: "create",
+            savePath: resolvedPath,
+            mimeType:
+              path.extname(resolvedPath).toLowerCase() === ".xls"
+                ? "application/vnd.ms-excel"
+                : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            summary: `OK Workbook creato: ${resolvedPath} (${sheets.length} fogli)`,
+          });
         }
 
         default:
@@ -852,45 +900,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             fs.mkdirSync(outputDir, { recursive: true });
             fs.writeFileSync(savePath, output, "utf8");
             const mimeType = format === "md" ? "text/markdown" : "text/plain";
-            const registryResult = appendToArtifactRegistry({
-              savePath,
-              mimeType,
-              producerTool: "pdf_document.export_text",
-            });
-            const registryLines = registryResult.available
-              ? [
-                  `Artifact URI: ${registryResult.record.artifact_uri}`,
-                  `Registry: ${OFFICE_ARTIFACT_REGISTRY_PATH}`,
-                ]
-              : [
-                  "Artifact URI: non disponibile (registry non scrivibile)",
-                  "Registry warning: export completato con fallback legacy su save_path.",
-                ];
-            const resourceLink = registryResult.available ? registryResult.record.artifact_uri : null;
-            const exportPayload = {
-              ok: true,
+            const response = buildWriteArtifactResponse({
               tool: "pdf_document",
               action: "export_text",
-              save_path: savePath,
-              resource_link: resourceLink,
-              mime_type: mimeType,
-              pages: pages.length,
-              format,
-            };
-
-            return {
-              content: [
-                {
-                  type: "text",
-                  text:
-                    `OK Testo PDF esportato in: ${savePath}\n` +
-                    `Formato: ${format}\n` +
-                    `Pagine esportate: ${pages.length}\n` +
-                    registryLines.join("\n"),
-                },
-              ],
-              structuredContent: exportPayload,
-            };
+              savePath,
+              mimeType,
+              summary:
+                `OK Testo PDF esportato in: ${savePath}\n` +
+                `Formato: ${format}\n` +
+                `Pagine esportate: ${pages.length}`,
+            });
+            response.structuredContent.pages = pages.length;
+            response.structuredContent.format = format;
+            return response;
           });
         }
 
