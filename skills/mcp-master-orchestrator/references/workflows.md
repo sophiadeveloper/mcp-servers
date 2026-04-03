@@ -116,3 +116,71 @@ Quando l'utente chiede un kickoff breve:
 4. `mcp-database-expert`: verifica dati o schema se il modulo ne dipende.
 5. `mcp-browser-automation`: prova login, navigazione e form principali.
 6. `mcp-docs-navigator`: aggiorna guide e tag del nuovo materiale.
+
+## Playbook Breve: Audit/Review Parallelo (Esplorazione + Sintesi)
+
+Obiettivo: esplorare fonti in parallelo e chiudere con una sintesi unica, tracciabile.
+
+### Fase 1 - Esplorazione parallela (max 2 explorer)
+
+1. Avvia due tracce distinte (es. codice/commit e documentazione/ticket).
+2. Raccogli solo fatti verificabili, separando inferenze e dubbi.
+3. Registra overlap, conflitti e gap tra le tracce.
+
+**Evidenze minime per passaggio fase**
+
+- lista fonti consultate con riferimento puntuale;
+- almeno 3 fatti verificati per traccia, non duplicati;
+- elenco esplicito di conflitti/gap aperti.
+
+### Fase 2 - Sintesi convergente
+
+1. Unifica le evidenze in un quadro coerente (scope, stato, rischio).
+2. Risolvi i conflitti minori; marca quelli che richiedono escalation.
+3. Produci raccomandazione operativa breve con alternative esclusive.
+
+**Evidenze minime per chiusura**
+
+- matrice sintetica `fatto -> fonte -> impatto`;
+- decisione raccomandata + 1 alternativa praticabile;
+- rischio residuo e trigger di fallback umano.
+
+## Playbook Breve: Fix Disciplinata (Explore -> Implement -> Verify)
+
+Obiettivo: ridurre regressioni imponendo gate minimi tra le fasi.
+
+### Fase 1 - Explore
+
+1. Delimita perimetro della fix (moduli, dati, UI/API toccate).
+2. Definisci ipotesi di root cause e criterio di successo osservabile.
+3. Prepara piano minimo di modifica e rollback.
+
+**Evidenze minime per passaggio fase**
+
+- file/componenti impattati con motivazione;
+- ipotesi root cause testabile;
+- check di verifica previsti (lint/test/smoke) con comando.
+
+### Fase 2 - Implement
+
+1. Applica modifica incrementale senza refactor fuori scope.
+2. Mantieni compatibilita' legacy e fallback richiesti.
+3. Aggiorna documentazione locale toccata dalla fix.
+
+**Evidenze minime per passaggio fase**
+
+- diff focalizzato sui soli file necessari;
+- nota su backward compatibility/fallback;
+- changelog tecnico breve (cosa cambia e cosa no).
+
+### Fase 3 - Verify
+
+1. Esegui lint/test/smoke pertinenti alla fix.
+2. Valida il criterio di successo definito in Explore.
+3. Prepara handoff finale con prove e rischi residui.
+
+**Evidenze minime per chiusura**
+
+- output comandi di verifica (pass/fail) con timestamp;
+- prova del comportamento corretto (log, risultato test o runbook);
+- elenco rischi residui + piano di monitoraggio post-fix.
