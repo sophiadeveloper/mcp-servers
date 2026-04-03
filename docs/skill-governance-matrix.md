@@ -33,6 +33,15 @@ Scala usata:
 2. **Script support uniforme ma debole**: le skill principali non espongono `scripts/` locali.
 3. **Boundary analyst/orchestrator ben presidiato**: i due skill core hanno confini reciproci espliciti e coerenti.
 
+## Criteri di routing verificabili (Milestone 0)
+
+Per considerare "verificabile" il routing tra skill core devono risultare tutti i punti:
+
+1. `mcp-technical-analyst` dichiara criteri **pass/fail** per intake multi-sorgente e anti-trigger mono-dominio.
+2. `mcp-master-orchestrator` dichiara gate di routing con regola esplicita "coordinatore, non intake universale".
+3. Entrambe le skill espongono **stop conditions** e direzioni di escalation (verso analyst, specialistico o utente).
+4. La checklist orchestrator include campi `PASS/FAIL` per audit veloce durante handoff/review.
+
 ## Backlog minimo consigliato
 
 - Introdurre `evals/` minimi per `mcp-master-orchestrator` e almeno per 2 skill esecutive ad alto uso.

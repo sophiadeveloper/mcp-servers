@@ -15,6 +15,16 @@
 * Riusa sessioni Playwright con `browser_export_state` e `browser_load_state` quando il login e ripetitivo.
 * Non aprire troppi fronti insieme: completa una fase e lascia un artefatto prima di passare alla successiva.
 
+## Checklist verificabile di routing
+
+Marca ogni riga come `PASS` o `FAIL`:
+
+* [ ] `PASS/FAIL` — Ho verificato se il task e multi-sorgente (>=2 fonti eterogenee) prima di scegliere lo skill primario.
+* [ ] `PASS/FAIL` — Se multi-sorgente, ho assegnato `mcp-technical-analyst` come intake primario.
+* [ ] `PASS/FAIL` — Ho usato `mcp-master-orchestrator` solo per coordinare fasi/handoff e non come intake universale.
+* [ ] `PASS/FAIL` — Ho esplicitato almeno una stop condition tecnica (conflitto evidenze, ambiguita' bloccante, scope shift).
+* [ ] `PASS/FAIL` — Ho dichiarato l'escalation applicata (analyst, specialistico o utente) con motivazione breve.
+
 ## Errori Comuni
 
 * Dimenticare il `project_path` e leggere credenziali o log del progetto sbagliato.

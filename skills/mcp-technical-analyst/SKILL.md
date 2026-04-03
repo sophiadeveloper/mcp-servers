@@ -38,6 +38,19 @@ Escalation consigliata:
 2. Se emergono dipendenze tra piu repository, DB, ambienti o allegati eterogenei, passa a `ticket-first` completo.
 3. Se il prompt e puramente operativo su un solo dominio (solo SQL, solo docs, solo CFML), non forzare questo skill: instrada allo specialistico e mantieni `mcp-technical-analyst` solo come coordinatore se serve report finale.
 
+## Criteri verificabili di intake primario
+
+Considera `mcp-technical-analyst` primario solo se almeno un criterio e verificato:
+
+1. richiesta di correlare almeno 2 sorgenti eterogenee (ticket/docs/commit/db/allegati);
+2. richiesta esplicita di deliverable analitico strutturato (stato dell'arte, gap analysis, dossier);
+3. conflitto da risolvere tra fonti tecniche (es. ticket dice A, codice mostra B).
+
+Anti-trigger verificabili (instradare allo specialistico):
+
+- task eseguibile end-to-end in un dominio singolo senza correlazioni;
+- nessuna esigenza di separare evidenza/inferenza/punti aperti nel deliverable finale.
+
 ## Principi operativi
 
 1. Parti sempre dai fatti disponibili e fai discovery prima di fare domande.
@@ -98,6 +111,20 @@ Prima esplora. Fai domande solo se manca davvero uno di questi elementi:
 Quando devi chiedere, fai 1-3 domande mirate, corte e ad alto impatto. Se puoi procedere con un default ragionevole senza rischio alto, procedi e registra l'assunzione.
 
 Vedi [references/interactive-escalation.md](references/interactive-escalation.md).
+
+## Stop conditions ed escalation esplicite
+
+Interrompi il flusso corrente e dichiara escalation quando:
+
+- emerge una dipendenza non prevista su un secondo repository o database;
+- la verifica minima produce evidenze in contraddizione non chiudibili con le fonti attuali;
+- manca un identificativo esterno critico non ricavabile localmente.
+
+Escalation standard:
+
+1. `ticket-first-light` -> `ticket-first` completo quando scatta una condizione di complessita';
+2. `mcp-technical-analyst` -> skill specialistico quando il problema si riduce a sola esecuzione mono-dominio;
+3. verso utente solo per decisioni bloccanti non inferibili in sicurezza.
 
 ## Contratto Di Output
 
