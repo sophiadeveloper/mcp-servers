@@ -7,7 +7,7 @@ Checklist operativa per rebase tracciabili tra `git-node` e Mantis.
 Prima di avviare un rebase:
 
 1. Verifica stato working tree con `git_query` `action: "status"`.
-2. Verifica il branch di partenza con una sequenza supportata: `git_query` `action: "status"` (campo branch) e, per conferma, `git_query` `action: "history"` oppure `git_query` `action: "repo_info"`.
+2. Verifica il branch di partenza **senza** usare `current_branch`: usa la sequenza supportata `git_query` `action: "status"` (campo branch) + conferma con `git_query` `action: "history"` oppure `git_query` `action: "repo_info"`.
 3. Acquisisci baseline commit (HEAD corrente + target base) con `git_query` `action: "history"`.
 4. Conferma relazione di ancestry dove rilevante (`git_query` `action: "check_ancestor"`).
 5. Se il branch e condiviso o ad alto rischio, annota nel ticket Mantis la finestra operativa prevista.
