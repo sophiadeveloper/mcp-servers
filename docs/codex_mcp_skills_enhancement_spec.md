@@ -647,16 +647,23 @@ Evolvere `save_path` in artifact resource, senza perdere la compatibilita' con i
 
 Tradurre i workflow piu' frequenti in prompt MCP discoverable.
 
-### Prompt candidati
+### Prompt candidati (stato M4)
 
-- `triage_bug_ticket`
-- `analyze_merge_conflict`
-- `ingest_pdf_into_docs`
-- `generate_monthly_report`
-- `post_fix_validation`
-- `technical_analysis_ticket_first`
-- `technical_analysis_document_first`
-- `technical_gap_analysis`
+| Candidato | Stato | Tipo | Argomenti minimi |
+| --- | --- | --- | --- |
+| `triage_bug_ticket` | **Implementato ora** (`git-node`) | **prompt-first** | `ticket_id`, `project_path` (`focus_area` opzionale) |
+| `analyze_merge_conflict` | **Rimandato** (coperto temporaneamente da `git_conflict_resolution_plan`) | **hybrid** | `project_path`, `target_branch`, `source_branch` |
+| `ingest_pdf_into_docs` | **Implementato ora** (`office-node`) | **prompt-first** | `pdf_path`, `save_path`, `shelf_name`, `doc_title` |
+| `generate_monthly_report` | **Rimandato** | **hybrid** | `month`, `year`, `project_path` |
+| `post_fix_validation` | **Implementato ora** (`git-node`) | **prompt-first** | `project_path` (`source_branch`, `target_branch` opzionali) |
+| `technical_analysis_ticket_first` | **Rimandato** | **skill-first** | `ticket_id`, `project_path` |
+| `technical_analysis_document_first` | **Rimandato** | **skill-first** | `document_path` o `doc_uri`, `project_path` |
+| `technical_gap_analysis` | **Rimandato** | **skill-first** | `target_scope`, `baseline_scope`, `project_path` |
+
+Note operative rapide:
+
+- "Implementato ora" indica prompt gia' esposto via `prompts/list` + `prompts/get`.
+- "Rimandato" indica candidato mantenuto in roadmap: il workflow resta coperto da skill o prompt adiacenti finche' non viene introdotto il nome definitivo.
 
 ### Regole
 
