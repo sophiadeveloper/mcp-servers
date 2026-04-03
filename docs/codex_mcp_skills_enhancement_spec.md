@@ -773,12 +773,14 @@ Usare Codex in modo piu' disciplinato sui task complessi.
 
 ### Milestone 6 final scope
 
-| Agente implementato | Ruolo | Regole anti-overlap | Limiti parallelismo/profondita' | Fuori scope in Milestone 6 |
-| --- | --- | --- | --- | --- |
-| `technical_analyst` | Intake e ricostruzione tecnica multi-sorgente, con output strutturato e verificabile. | Si attiva su task ticket/doc/commit/allegati o correlazioni cross-source; non esegue implementazioni di codice salvo micro-fix strumentali al deliverable. | `parallelism <= 2` sidecar per fase; profondita' massima 3 livelli (analisi -> approfondimento mirato -> sintesi). | Agenti verticali extra (es. performance/security specialist) non necessari al flusso standard. |
-| `orchestrator` | Coordinamento del piano multi-fase e routing verso agenti/skill specialistici. | Non produce analisi tecnica di dettaglio quando e' disponibile `technical_analyst`; non sostituisce agenti implementativi di dominio. | `parallelism <= 3` task indipendenti; vietato nesting oltre 2 hop di delega. | Meta-orchestratori aggiuntivi o logiche autonome di pianificazione non richieste dalla milestone. |
-| `implementer` | Esecuzione delle modifiche su codice/config con patch incrementali e compatibili. | Non decide routing globale e non prende in carico intake analitico completo; richiede input strutturato da `orchestrator`/`technical_analyst`. | Lavoro seriale sullo stesso subtree; parallelismo ammesso solo su file indipendenti, profondita' 2 (task -> subtask). | Agenti dedicati a refactor massivi cross-repo o migrazioni architetturali fuori scope. |
-| `reviewer` | Audit finale su qualita', compatibilita', test minimi e completezza documentale. | Non apre nuove implementazioni estese; rilancia a `implementer` solo fix puntuali bloccanti. | Esegue checklist in sequenza; nessun fan-out oltre 2 verifiche contemporanee. | Agenti opzionali di QA avanzato (fuzzing esteso, benchmarking profondo, audit formale). |
+Tabella sintetica review-ready (senza ambiguita'):
+
+| Agenti implementati | Ruolo | Limiti parallelismo/profondita' | Esclusioni fuori scope |
+| --- | --- | --- | --- |
+| `technical_analyst` | Intake e ricostruzione tecnica multi-sorgente, con output strutturato e verificabile. | `parallelism <= 2` sidecar per fase; profondita' massima 3 livelli (analisi -> approfondimento mirato -> sintesi). | Nessuna implementazione di codice estesa; esclusi agenti verticali extra (es. performance/security specialist) non necessari al flusso standard. |
+| `orchestrator` | Coordinamento del piano multi-fase e routing verso agenti/skill specialistici. | `parallelism <= 3` task indipendenti; vietato nesting oltre 2 hop di delega. | Niente meta-orchestratori aggiuntivi o logiche autonome di pianificazione non richieste dalla milestone. |
+| `implementer` | Esecuzione delle modifiche su codice/config con patch incrementali e compatibili. | Lavoro seriale sullo stesso subtree; parallelismo ammesso solo su file indipendenti, profondita' 2 (task -> subtask). | Esclusi refactor massivi cross-repo, intake analitico completo e decisioni di routing globale. |
+| `reviewer` | Audit finale su qualita', compatibilita', test minimi e completezza documentale. | Checklist in sequenza; nessun fan-out oltre 2 verifiche contemporanee. | Niente nuove implementazioni estese; esclusi QA avanzato opzionale (fuzzing esteso, benchmarking profondo, audit formale). |
 
 ### Criteri di accettazione
 
