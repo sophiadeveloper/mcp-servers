@@ -47,6 +47,24 @@ Non usarlo se il task e chiaramente mono-dominio e puo essere risolto direttamen
 6. Solo se serve una prova funzionale, usa `mcp-browser-automation`.
 7. Genera i documenti di analisi e, se richiesto, indicizzali.
 
+### Variante light `ticket-first-light` (prompt guidato di avvio)
+
+Usa questa variante quando serve un avvio rapido da ticket con output breve, mantenendo la possibilita di escalation verso il flusso completo.
+
+1. Leggi ticket, note e allegati essenziali con `mcp-git-mantis-workflow`.
+2. Estrai riferimenti minimi (repo/commit/docs/db) e formula ipotesi iniziale.
+3. Verifica velocemente una sola fonte tecnica prioritaria (di norma codice oppure docs).
+4. Produci un mini-output con:
+   - contesto del ticket
+   - evidenze gia verificate
+   - primi gap/punti aperti
+   - prossimo passo consigliato
+5. Se emergono dipendenze cross-repo, cross-db o dubbi sostanziali, passa subito a `ticket-first` completo.
+
+Prompt guidato di avvio (template):
+
+`Parti dal ticket {ticket_id} in modalita ticket-first-light. Dammi un avvio rapido con evidenze osservate, inferenze iniziali e punti aperti prioritari. Se trovi complessita multi-sorgente, proponi esplicitamente l'escalation al flusso ticket-first completo di mcp-technical-analyst.`
+
 ### Entry point `document-first`
 
 1. Leggi il documento sorgente con `mcp-office-expert` o `mcp-docs-navigator`.
@@ -97,6 +115,7 @@ Vedi [references/deliverable-templates.md](references/deliverable-templates.md).
 ## Riferimenti
 
 - [references/analysis-workflow.md](references/analysis-workflow.md)
+- [references/ticket-first-light.md](references/ticket-first-light.md)
 - [references/source-matrix.md](references/source-matrix.md)
 - [references/deliverable-templates.md](references/deliverable-templates.md)
 - [references/interactive-escalation.md](references/interactive-escalation.md)
