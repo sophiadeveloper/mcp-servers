@@ -5,6 +5,23 @@ import os from 'node:os';
 
 const registryTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'office-smoke-registry-'));
 const registryPath = path.join(registryTempDir, 'artifact-registry.json');
+const EXPECTED_PROMPTS = {
+  ingest_pdf_into_docs: {
+    required: ['pdf_path', 'save_path', 'shelf_name', 'doc_title'],
+    optional: [],
+    arguments: {
+      pdf_path: '/tmp/source.pdf',
+      save_path: '/tmp/exported.md',
+      shelf_name: 'smoke-shelf',
+      doc_title: 'Smoke PDF'
+    },
+    contains: [
+      'office-node',
+      'docs_management(action="scan_file"',
+      'docs_navigation.search'
+    ]
+  }
+};
 
 function assertArraySchemasDeclareItems(schema, breadcrumb = 'inputSchema') {
   if (!schema || typeof schema !== 'object') return;
@@ -52,20 +69,34 @@ function validatePromptMetadata(promptsList) {
     throw new Error(`prompts/list invalid payload: ${JSON.stringify(promptsList)}`);
   }
 
-  const prompt = promptsList.prompts.find((entry) => entry?.name === 'ingest_pdf_into_docs');
-  if (!prompt) {
-    throw new Error(`prompts/list missing ingest_pdf_into_docs: ${JSON.stringify(promptsList)}`);
-  }
+  const byName = new Map(promptsList.prompts.map((prompt) => [prompt?.name, prompt]));
+  for (const [name, expected] of Object.entries(EXPECTED_PROMPTS)) {
+    const prompt = byName.get(name);
+    if (!prompt) {
+      throw new Error(`prompts/list missing ${name}: ${JSON.stringify(promptsList)}`);
+    }
 
-  if (!Array.isArray(prompt.arguments)) {
-    throw new Error(`prompts/list ingest_pdf_into_docs missing arguments array: ${JSON.stringify(prompt)}`);
-  }
+    if (!Array.isArray(prompt.arguments)) {
+      throw new Error(`prompts/list ${name} missing arguments array: ${JSON.stringify(prompt)}`);
+    }
 
-  const requiredArgs = ['pdf_path', 'save_path', 'shelf_name', 'doc_title'];
-  for (const argName of requiredArgs) {
-    const arg = prompt.arguments.find((entry) => entry?.name === argName);
-    if (!arg || arg.required !== true) {
-      throw new Error(`prompts/list ingest_pdf_into_docs invalid required arg "${argName}": ${JSON.stringify(prompt)}`);
+    for (const argName of expected.required) {
+      const arg = prompt.arguments.find((entry) => entry?.name === argName);
+      if (!arg || arg.required !== true) {
+        throw new Error(`prompts/list ${name} invalid required arg "${argName}": ${JSON.stringify(prompt)}`);
+      }
+    }
+
+    for (const argName of expected.optional) {
+      const arg = prompt.arguments.find((entry) => entry?.name === argName);
+      if (!arg || arg.required !== false) {
+        throw new Error(`prompts/list ${name} invalid optional arg "${argName}": ${JSON.stringify(prompt)}`);
+      }
+    }
+
+    const expectedArgCount = expected.required.length + expected.optional.length;
+    if (prompt.arguments.length !== expectedArgCount) {
+      throw new Error(`prompts/list ${name} unexpected arguments shape: ${JSON.stringify(prompt)}`);
     }
   }
 }
@@ -90,18 +121,24 @@ await runSmoke({
       const promptsList = await request('prompts/list', {});
       validatePromptMetadata(promptsList);
 
-      const promptResult = await request('prompts/get', {
-        name: 'ingest_pdf_into_docs',
-        arguments: {
-          pdf_path: sourcePdfPath,
-          save_path: exportTxtPath,
-          shelf_name: 'smoke-shelf',
-          doc_title: 'Smoke PDF'
+      for (const [promptName, expected] of Object.entries(EXPECTED_PROMPTS)) {
+        const promptResult = await request('prompts/get', {
+          name: promptName,
+          arguments: {
+            ...expected.arguments,
+            pdf_path: sourcePdfPath,
+            save_path: exportTxtPath
+          }
+        });
+        if (!promptResult?.description || !Array.isArray(promptResult?.messages) || promptResult.messages.length === 0) {
+          throw new Error(`prompts/get ${promptName} invalid envelope: ${JSON.stringify(promptResult)}`);
         }
-      });
-      const promptText = promptResult?.messages?.[0]?.content?.text || '';
-      if (!promptText.includes(sourcePdfPath) || !promptText.includes(exportTxtPath) || !promptText.includes('docs_management(action="scan_file"')) {
-        throw new Error(`prompts/get ingest_pdf_into_docs missing expected fragments: ${JSON.stringify(promptResult)}`);
+        const promptText = promptResult?.messages?.[0]?.content?.text || '';
+        for (const fragment of expected.contains) {
+          if (!promptText.includes(fragment)) {
+            throw new Error(`prompts/get ${promptName} missing expected fragment "${fragment}": ${JSON.stringify(promptResult)}`);
+          }
+        }
       }
 
       // 1) tools/list schema sanity check
