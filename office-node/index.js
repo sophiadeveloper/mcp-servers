@@ -4,6 +4,8 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
@@ -48,6 +50,42 @@ const excelCellSchema = {
 const OFFICE_ARTIFACT_REGISTRY_PATH =
   process.env.OFFICE_ARTIFACT_REGISTRY_PATH ||
   path.join(__dirname, "artifact-registry.json");
+const PROMPT_METADATA = [
+  {
+    name: "ingest_pdf_into_docs",
+    title: "Ingest PDF into Docs",
+    description:
+      "Istruzioni essenziali per estrarre testo da PDF con office-node e pubblicarlo nella documentazione indicizzata.",
+    arguments: [
+      {
+        name: "pdf_path",
+        description: "Path locale del PDF sorgente.",
+        required: true,
+      },
+      {
+        name: "save_path",
+        description: "Path locale del file markdown esportato da office-node.",
+        required: true,
+      },
+      {
+        name: "shelf_name",
+        description: "Nome shelf/collezione destinazione in docs.",
+        required: true,
+      },
+      {
+        name: "doc_title",
+        description: "Titolo documento da creare/aggiornare.",
+        required: true,
+      },
+    ],
+  },
+];
+
+function escapePromptArg(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
 
 function createArtifactUri(savePath) {
   const now = new Date();
@@ -418,7 +456,7 @@ function formatPdfPagesAsMarkdown(filePath, metadata, pages) {
 // ---------------------------------------------------------------------------
 const server = new Server(
   { name: "office-mcp-server", version: "1.2.1" },
-  { capabilities: { tools: {}, resources: {} } }
+  { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
@@ -487,6 +525,41 @@ server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
     },
   ],
 }));
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: PROMPT_METADATA,
+}));
+
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const { name, arguments: args = {} } = request.params;
+
+  if (name === "ingest_pdf_into_docs") {
+    const pdfPath = escapePromptArg(args.pdf_path || "<PDF_PATH>");
+    const savePath = escapePromptArg(args.save_path || "<SAVE_PATH_MD>");
+    const shelfName = escapePromptArg(args.shelf_name || "<SHELF_NAME>");
+    const docTitle = escapePromptArg(args.doc_title || "<DOC_TITLE>");
+    return {
+      description: "Pipeline minima PDF -> office export markdown -> docs ingestion.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              `Ingest del PDF ${pdfPath} nella shelf "${shelfName}" con titolo "${docTitle}".`,
+              `1) Esegui office-node pdf_document(action="export_text", file_path="${pdfPath}", save_path="${savePath}", format="md").`,
+              `2) Verifica che il file ${savePath} esista e che l'export sia leggibile (no dump grezzo).`,
+              `3) Esegui docs-node docs_management(action="scan_file", file_path="${savePath}", shelf_name="${shelfName}", title="${docTitle}").`,
+              "4) Verifica reperibilita' via docs_navigation.search e riporta id/URI documento con eventuali limiti di estrazione.",
+            ].join("\n"),
+          },
+        },
+      ],
+    };
+  }
+
+  throw new Error(`Prompt sconosciuto: ${name}`);
+});
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [

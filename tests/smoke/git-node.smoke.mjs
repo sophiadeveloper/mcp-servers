@@ -35,16 +35,6 @@ const EXPECTED_PROMPTS = {
     },
     contains: ['bugfix/42 vs origin/release', 'smoke o check disponibili']
   },
-  ingest_pdf_into_docs: {
-    required: ['pdf_path', 'shelf_name', 'doc_title'],
-    optional: [],
-    arguments: {
-      pdf_path: '/tmp/test.pdf',
-      shelf_name: 'qa-shelf',
-      doc_title: 'Ticket 42 analysis'
-    },
-    contains: ['/tmp/test.pdf', 'qa-shelf', 'Ticket 42 analysis']
-  },
   git_conflict_resolution_plan: {
     required: ['project_path'],
     optional: ['file_path', 'rebase_action'],
