@@ -866,6 +866,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   "Artifact URI: non disponibile (registry non scrivibile)",
                   "Registry warning: export completato con fallback legacy su save_path.",
                 ];
+            const resourceLink = registryResult.available ? registryResult.record.artifact_uri : null;
+            const exportPayload = {
+              ok: true,
+              tool: "pdf_document",
+              action: "export_text",
+              save_path: savePath,
+              resource_link: resourceLink,
+              mime_type: mimeType,
+              pages: pages.length,
+              format,
+            };
 
             return {
               content: [
@@ -878,6 +889,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     registryLines.join("\n"),
                 },
               ],
+              structuredContent: exportPayload,
             };
           });
         }
