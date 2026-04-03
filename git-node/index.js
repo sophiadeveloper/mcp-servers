@@ -74,6 +74,28 @@ const PROMPT_METADATA = [
     ]
   },
   {
+    name: "technical_analysis_ticket_first",
+    title: "Technical Analysis Ticket First (Thin)",
+    description: "Prompt thin: raccoglie il minimo contesto e instrada verso la skill completa mcp-technical-analyst.",
+    arguments: [
+      {
+        name: "ticket_id",
+        description: "Identificativo ticket di partenza (es. MANTIS-1234).",
+        required: true
+      },
+      {
+        name: "project_path",
+        description: "Path repository usato come contesto iniziale di analisi.",
+        required: true
+      },
+      {
+        name: "scope_hint",
+        description: "Hint opzionale su modulo/sottosistema da esplorare per primo.",
+        required: false
+      }
+    ]
+  },
+  {
     name: "post_fix_validation",
     title: "Post Fix Validation",
     description: "Checklist breve per validare una fix dopo implementazione prima del passaggio in review/QA.",
@@ -733,6 +755,31 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
               "2) Verifica che il delta sia coerente col bug (nessun cambiamento fuori scope evidente).",
               "3) Esegui/riporta smoke o check disponibili e segnala eventuali gap.",
               "4) Produci esito finale: OK, KO o OK con rischi residui e follow-up."
+            ].join("\n")
+          }
+        }
+      ]
+    };
+  }
+
+  if (name === "technical_analysis_ticket_first") {
+    const ticketId = escapePromptArg(args.ticket_id || "<TICKET_ID>");
+    const projectPath = escapePromptArg(args.project_path || "<PROJECT_PATH>");
+    const scopeHint = escapePromptArg(args.scope_hint || "<SCOPE_HINT_OPTIONAL>");
+    return {
+      description: "Kickoff ticket-first minimale con escalation esplicita verso mcp-technical-analyst.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              `Avvia analisi tecnica ticket-first per ${ticketId} nel progetto ${projectPath}.`,
+              `Scope hint opzionale: ${scopeHint}.`,
+              "Output richiesto (breve):",
+              "1) Evidenze immediate disponibili (ticket + segnali tecnici iniziali) in massimo 5 bullet.",
+              "2) Gap informativi/blocchi che impediscono una diagnosi affidabile.",
+              "3) Escalation: delega la ricostruzione completa alla skill mcp-technical-analyst (workflow ticket-first), mantenendo separati evidenza, inferenza e punti aperti."
             ].join("\n")
           }
         }

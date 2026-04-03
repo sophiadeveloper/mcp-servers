@@ -656,7 +656,7 @@ Tradurre i workflow piu' frequenti in prompt MCP discoverable.
 | `ingest_pdf_into_docs` | **Implementato ora** (`office-node`) | **prompt-first** | `pdf_path`, `save_path`, `shelf_name`, `doc_title` |
 | `generate_monthly_report` | **Rimandato** | **hybrid** | `month`, `year`, `project_path` |
 | `post_fix_validation` | **Implementato ora** (`git-node`) | **prompt-first** | `project_path` (`source_branch`, `target_branch` opzionali) |
-| `technical_analysis_ticket_first` | **Rimandato** | **skill-first** | `ticket_id`, `project_path` |
+| `technical_analysis_ticket_first` | **Implementato ora** (`git-node`, thin) | **skill-first** (con escalation esplicita) | `ticket_id`, `project_path`, `scope_hint` opzionale |
 | `technical_analysis_document_first` | **Rimandato** | **skill-first** | `document_path` o `doc_uri`, `project_path` |
 | `technical_gap_analysis` | **Rimandato** | **skill-first** | `target_scope`, `baseline_scope`, `project_path` |
 

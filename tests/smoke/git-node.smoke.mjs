@@ -25,6 +25,16 @@ const EXPECTED_PROMPTS = {
     },
     contains: ['MANTIS-42', "usa billing come priorita'"]
   },
+  technical_analysis_ticket_first: {
+    required: ['ticket_id', 'project_path'],
+    optional: ['scope_hint'],
+    arguments: {
+      ticket_id: 'MANTIS-314',
+      project_path: '/tmp/example-repo',
+      scope_hint: 'checkout'
+    },
+    contains: ['MANTIS-314', 'mcp-technical-analyst']
+  },
   post_fix_validation: {
     required: ['project_path'],
     optional: ['source_branch', 'target_branch'],
