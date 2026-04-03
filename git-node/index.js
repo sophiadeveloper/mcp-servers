@@ -96,28 +96,6 @@ const PROMPT_METADATA = [
     ]
   },
   {
-    name: "ingest_pdf_into_docs",
-    title: "Ingest PDF into Docs",
-    description: "Istruzioni essenziali per estrarre testo da PDF e pubblicarlo nella documentazione indicizzata.",
-    arguments: [
-      {
-        name: "pdf_path",
-        description: "Path locale del PDF sorgente.",
-        required: true
-      },
-      {
-        name: "shelf_name",
-        description: "Nome shelf/collezione destinazione in docs.",
-        required: true
-      },
-      {
-        name: "doc_title",
-        description: "Titolo documento da creare/aggiornare.",
-        required: true
-      }
-    ]
-  },
-  {
     name: "git_review_workflow",
     title: "Git Review Workflow",
     description: "Checklist operativa per review read-only (stato, storia, compare) senza modificare il repository.",
@@ -755,30 +733,6 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
               "2) Verifica che il delta sia coerente col bug (nessun cambiamento fuori scope evidente).",
               "3) Esegui/riporta smoke o check disponibili e segnala eventuali gap.",
               "4) Produci esito finale: OK, KO o OK con rischi residui e follow-up."
-            ].join("\n")
-          }
-        }
-      ]
-    };
-  }
-
-  if (name === "ingest_pdf_into_docs") {
-    const pdfPath = escapePromptArg(args.pdf_path || "<PDF_PATH>");
-    const shelfName = escapePromptArg(args.shelf_name || "<SHELF_NAME>");
-    const docTitle = escapePromptArg(args.doc_title || "<DOC_TITLE>");
-    return {
-      description: "Pipeline minima PDF -> docs indicizzati.",
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: [
-              `Ingest del PDF ${pdfPath} nella shelf "${shelfName}" con titolo "${docTitle}".`,
-              "1) Estrai testo/metadata dal PDF e normalizza contenuto utile (niente dump grezzo).",
-              "2) Crea o aggiorna documento nella shelf target mantenendo struttura leggibile.",
-              "3) Aggiungi tag minimi (fonte, data, dominio) e verifica reperibilita' via ricerca.",
-              "4) Riporta URI/id documento creato e eventuali limiti di estrazione."
             ].join("\n")
           }
         }

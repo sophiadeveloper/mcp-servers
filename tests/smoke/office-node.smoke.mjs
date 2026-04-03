@@ -47,6 +47,29 @@ function extractTextContent(result) {
     .join('\n');
 }
 
+function validatePromptMetadata(promptsList) {
+  if (!Array.isArray(promptsList?.prompts)) {
+    throw new Error(`prompts/list invalid payload: ${JSON.stringify(promptsList)}`);
+  }
+
+  const prompt = promptsList.prompts.find((entry) => entry?.name === 'ingest_pdf_into_docs');
+  if (!prompt) {
+    throw new Error(`prompts/list missing ingest_pdf_into_docs: ${JSON.stringify(promptsList)}`);
+  }
+
+  if (!Array.isArray(prompt.arguments)) {
+    throw new Error(`prompts/list ingest_pdf_into_docs missing arguments array: ${JSON.stringify(prompt)}`);
+  }
+
+  const requiredArgs = ['pdf_path', 'save_path', 'shelf_name', 'doc_title'];
+  for (const argName of requiredArgs) {
+    const arg = prompt.arguments.find((entry) => entry?.name === argName);
+    if (!arg || arg.required !== true) {
+      throw new Error(`prompts/list ingest_pdf_into_docs invalid required arg "${argName}": ${JSON.stringify(prompt)}`);
+    }
+  }
+}
+
 await runSmoke({
   serverName: 'office-node',
   command: process.execPath,
@@ -64,6 +87,23 @@ await runSmoke({
     const minimalPdf = `%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n4 0 obj\n<< /Length 44 >>\nstream\nBT\n/F1 18 Tf\n50 100 Td\n(Smoke PDF) Tj\nET\nendstream\nendobj\n5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000010 00000 n \n0000000060 00000 n \n0000000117 00000 n \n0000000243 00000 n \n0000000337 00000 n \ntrailer\n<< /Root 1 0 R /Size 6 >>\nstartxref\n407\n%%EOF\n`;
 
     try {
+      const promptsList = await request('prompts/list', {});
+      validatePromptMetadata(promptsList);
+
+      const promptResult = await request('prompts/get', {
+        name: 'ingest_pdf_into_docs',
+        arguments: {
+          pdf_path: sourcePdfPath,
+          save_path: exportTxtPath,
+          shelf_name: 'smoke-shelf',
+          doc_title: 'Smoke PDF'
+        }
+      });
+      const promptText = promptResult?.messages?.[0]?.content?.text || '';
+      if (!promptText.includes(sourcePdfPath) || !promptText.includes(exportTxtPath) || !promptText.includes('docs_management(action="scan_file"')) {
+        throw new Error(`prompts/get ingest_pdf_into_docs missing expected fragments: ${JSON.stringify(promptResult)}`);
+      }
+
       // 1) tools/list schema sanity check
       if (!Array.isArray(toolsList.tools) || toolsList.tools.length === 0) {
         throw new Error(`tools/list empty or invalid: ${JSON.stringify(toolsList)}`);
