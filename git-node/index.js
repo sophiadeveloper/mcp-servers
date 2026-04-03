@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListToolsRequestSchema
+} from "@modelcontextprotocol/sdk/types.js";
 import { exec } from "child_process";
 import util from "util";
 import fs from "fs";
@@ -44,6 +49,59 @@ const TOOL_METADATA = {
     }
   }
 };
+
+const PROMPT_METADATA = [
+  {
+    name: "git_review_workflow",
+    title: "Git Review Workflow",
+    description: "Checklist operativa per review read-only (stato, storia, compare) senza modificare il repository.",
+    arguments: [
+      {
+        name: "project_path",
+        description: "Path assoluto della repository Git da analizzare.",
+        required: true
+      },
+      {
+        name: "source_branch",
+        description: "Branch/ref sorgente da confrontare (default: HEAD).",
+        required: false
+      },
+      {
+        name: "target_branch",
+        description: "Branch/ref target da usare come base confronto (default: origin/main).",
+        required: false
+      }
+    ]
+  },
+  {
+    name: "git_conflict_resolution_plan",
+    title: "Git Conflict Resolution Plan",
+    description: "Procedura guidata per analizzare e risolvere conflitti con verifiche incrementali.",
+    arguments: [
+      {
+        name: "project_path",
+        description: "Path assoluto della repository in stato di merge/rebase conflittuale.",
+        required: true
+      },
+      {
+        name: "file_path",
+        description: "File prioritario da analizzare per primo.",
+        required: false
+      },
+      {
+        name: "rebase_action",
+        description: "Azione finale suggerita per rebase_step: continue, skip oppure abort.",
+        required: false
+      }
+    ]
+  }
+];
+
+function escapePromptArg(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
 
 function toLegacyText(value) {
   if (typeof value === "string") return value;
@@ -423,7 +481,7 @@ async function listConflictsDetailed(projectPath) {
 
 const server = new Server(
   { name: "git-node-manager", version: "3.2.0" },
-  { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS }
+  { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS }
 );
 
 async function runGit(command, projectPath) {
@@ -555,6 +613,68 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       }
     ],
   };
+});
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  return {
+    prompts: PROMPT_METADATA
+  };
+});
+
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const { name, arguments: args = {} } = request.params;
+
+  if (name === "git_review_workflow") {
+    const projectPath = escapePromptArg(args.project_path || "<PROJECT_PATH>");
+    const sourceBranch = escapePromptArg(args.source_branch || "HEAD");
+    const targetBranch = escapePromptArg(args.target_branch || "origin/main");
+    return {
+      description: "Workflow read-only per inspection rapida branch e commit.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              "Esegui una review Git read-only usando solo i tool di lettura in questa sequenza:",
+              `1) git_query(action=status, project_path="${projectPath}")`,
+              `2) git_query(action=history, project_path="${projectPath}", commit_ref="${sourceBranch}", max_count=20)`,
+              `3) git_diff(action=compare, project_path="${projectPath}", source="${sourceBranch}", target="${targetBranch}", diff_mode="three_dot", stat=true)`,
+              "Riassumi rischi, file impattati e verifica se servono approfondimenti con commit_info/show."
+            ].join("\n")
+          }
+        }
+      ]
+    };
+  }
+
+  if (name === "git_conflict_resolution_plan") {
+    const projectPath = escapePromptArg(args.project_path || "<PROJECT_PATH>");
+    const filePath = escapePromptArg(args.file_path || "<CONFLICT_FILE_OPTIONAL>");
+    const rebaseAction = escapePromptArg(args.rebase_action || "continue");
+    return {
+      description: "Playbook operativo per gestione conflitti e avanzamento rebase.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              "Gestisci un conflitto Git in modo incrementale e verificabile:",
+              `1) git_query(action=rebase_status, project_path="${projectPath}")`,
+              `2) git_conflict_manager(action=list_detailed, project_path="${projectPath}")`,
+              `3) Se disponibile, analizza prima file_path="${filePath}" con git_conflict_manager(action=analyze, ...)`,
+              "4) Proponi la risoluzione, poi applica resolve + stage solo dopo conferma esplicita.",
+              `5) Dopo stage completo, esegui git_conflict_manager(action=rebase_step, project_path="${projectPath}", rebase_action="${rebaseAction}")`,
+              "Chiudi con checklist finale (stato branch, file risolti, eventuali step residui)."
+            ].join("\n")
+          }
+        }
+      ]
+    };
+  }
+
+  throw new Error(`Prompt sconosciuto: ${name}`);
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {

@@ -29,6 +29,24 @@ await runSmoke({
   command: process.execPath,
   args: ['git-node/index.js'],
   afterInitialize: async ({ request }) => {
+    const promptsList = await request('prompts/list', {});
+    if (!Array.isArray(promptsList?.prompts) || promptsList.prompts.length < 2) {
+      throw new Error(`prompts/list missing expected prompts: ${JSON.stringify(promptsList)}`);
+    }
+
+    const reviewPrompt = await request('prompts/get', {
+      name: 'git_review_workflow',
+      arguments: {
+        project_path: '/tmp/example-repo',
+        source_branch: 'feature/refactor',
+        target_branch: 'origin/main'
+      }
+    });
+    const reviewText = reviewPrompt?.messages?.[0]?.content?.text || '';
+    if (!reviewText.includes('git_diff(action=compare') || !reviewText.includes('feature/refactor')) {
+      throw new Error(`prompts/get git_review_workflow payload invalid: ${JSON.stringify(reviewPrompt)}`);
+    }
+
     const { repoPath, leftRef, rightRef } = setupTempRepo();
 
     const historyResult = await request('tools/call', {
