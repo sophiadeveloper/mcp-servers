@@ -4,6 +4,100 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 
+const EXPECTED_PROMPTS = {
+  git_review_workflow: {
+    required: ['project_path'],
+    optional: ['source_branch', 'target_branch'],
+    arguments: {
+      project_path: '/tmp/example-repo',
+      source_branch: 'feature/refactor',
+      target_branch: 'origin/main'
+    },
+    contains: ['git_diff(action=compare', 'feature/refactor']
+  },
+  triage_bug_ticket: {
+    required: ['ticket_id', 'project_path'],
+    optional: ['focus_area'],
+    arguments: {
+      ticket_id: 'MANTIS-42',
+      project_path: '/tmp/example-repo',
+      focus_area: 'billing'
+    },
+    contains: ['MANTIS-42', "usa billing come priorita'"]
+  },
+  post_fix_validation: {
+    required: ['project_path'],
+    optional: ['source_branch', 'target_branch'],
+    arguments: {
+      project_path: '/tmp/example-repo',
+      source_branch: 'bugfix/42',
+      target_branch: 'origin/release'
+    },
+    contains: ['bugfix/42 vs origin/release', 'smoke o check disponibili']
+  },
+  ingest_pdf_into_docs: {
+    required: ['pdf_path', 'shelf_name', 'doc_title'],
+    optional: [],
+    arguments: {
+      pdf_path: '/tmp/test.pdf',
+      shelf_name: 'qa-shelf',
+      doc_title: 'Ticket 42 analysis'
+    },
+    contains: ['/tmp/test.pdf', 'qa-shelf', 'Ticket 42 analysis']
+  },
+  git_conflict_resolution_plan: {
+    required: ['project_path'],
+    optional: ['file_path', 'rebase_action'],
+    arguments: {
+      project_path: '/tmp/example-repo',
+      file_path: 'src/conflict.php',
+      rebase_action: 'skip'
+    },
+    contains: ['file_path="src/conflict.php"', 'rebase_action="skip"']
+  }
+};
+
+function validatePromptMetadata(promptsList) {
+  if (!Array.isArray(promptsList?.prompts)) {
+    throw new Error(`prompts/list invalid payload: ${JSON.stringify(promptsList)}`);
+  }
+
+  const byName = new Map(promptsList.prompts.map((prompt) => [prompt?.name, prompt]));
+  const expectedNames = Object.keys(EXPECTED_PROMPTS);
+  for (const name of expectedNames) {
+    if (!byName.has(name)) {
+      throw new Error(`prompts/list missing expected prompt "${name}": ${JSON.stringify(promptsList)}`);
+    }
+  }
+
+  for (const [name, expected] of Object.entries(EXPECTED_PROMPTS)) {
+    const prompt = byName.get(name);
+    if (!Array.isArray(prompt?.arguments)) {
+      throw new Error(`prompts/list ${name} missing arguments array: ${JSON.stringify(prompt)}`);
+    }
+    const argumentNames = new Set(prompt.arguments.map((arg) => arg?.name));
+
+    for (const requiredName of expected.required) {
+      const argument = prompt.arguments.find((arg) => arg?.name === requiredName);
+      if (!argument || argument.required !== true) {
+        throw new Error(`prompts/list ${name} required arg "${requiredName}" invalid: ${JSON.stringify(prompt)}`);
+      }
+    }
+
+    for (const optionalName of expected.optional) {
+      const argument = prompt.arguments.find((arg) => arg?.name === optionalName);
+      if (!argument || argument.required !== false) {
+        throw new Error(`prompts/list ${name} optional arg "${optionalName}" invalid: ${JSON.stringify(prompt)}`);
+      }
+    }
+
+    const expectedArgCount = expected.required.length + expected.optional.length;
+    if (argumentNames.size !== expectedArgCount || prompt.arguments.length !== expectedArgCount) {
+      throw new Error(`prompts/list ${name} unexpected arguments shape: ${JSON.stringify(prompt)}`);
+    }
+  }
+}
+
 function setupTempRepo() {
   const repoPath = mkdtempSync(join(tmpdir(), 'git-node-smoke-'));
   execSync('git init', { cwd: repoPath, stdio: 'ignore' });
@@ -30,33 +124,22 @@ await runSmoke({
   args: ['git-node/index.js'],
   afterInitialize: async ({ request }) => {
     const promptsList = await request('prompts/list', {});
-    if (!Array.isArray(promptsList?.prompts) || promptsList.prompts.length < 5) {
-      throw new Error(`prompts/list missing expected prompts: ${JSON.stringify(promptsList)}`);
-    }
+    validatePromptMetadata(promptsList);
 
-    const reviewPrompt = await request('prompts/get', {
-      name: 'git_review_workflow',
-      arguments: {
-        project_path: '/tmp/example-repo',
-        source_branch: 'feature/refactor',
-        target_branch: 'origin/main'
+    for (const [promptName, expected] of Object.entries(EXPECTED_PROMPTS)) {
+      const promptResult = await request('prompts/get', {
+        name: promptName,
+        arguments: expected.arguments
+      });
+      const promptText = promptResult?.messages?.[0]?.content?.text || '';
+      if (!promptResult?.description || !Array.isArray(promptResult?.messages) || promptResult.messages.length === 0) {
+        throw new Error(`prompts/get ${promptName} invalid envelope: ${JSON.stringify(promptResult)}`);
       }
-    });
-    const reviewText = reviewPrompt?.messages?.[0]?.content?.text || '';
-    if (!reviewText.includes('git_diff(action=compare') || !reviewText.includes('feature/refactor')) {
-      throw new Error(`prompts/get git_review_workflow payload invalid: ${JSON.stringify(reviewPrompt)}`);
-    }
-
-    const triagePrompt = await request('prompts/get', {
-      name: 'triage_bug_ticket',
-      arguments: {
-        ticket_id: 'MANTIS-42',
-        project_path: '/tmp/example-repo'
+      for (const fragment of expected.contains) {
+        if (!promptText.includes(fragment)) {
+          throw new Error(`prompts/get ${promptName} missing expected fragment "${fragment}": ${JSON.stringify(promptResult)}`);
+        }
       }
-    });
-    const triageText = triagePrompt?.messages?.[0]?.content?.text || '';
-    if (!triageText.includes('MANTIS-42') || !triageText.includes('piano minimo')) {
-      throw new Error(`prompts/get triage_bug_ticket payload invalid: ${JSON.stringify(triagePrompt)}`);
     }
 
     const { repoPath, leftRef, rightRef } = setupTempRepo();
