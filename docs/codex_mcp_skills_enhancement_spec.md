@@ -342,6 +342,16 @@ Questa distinzione e' ora obbligatoria:
 - `mcp-technical-analyst`: intake analitico multi-sorgente
 - skill specialistiche: esecuzione di dominio e raccolta prova mirata
 
+#### Regola 5.1: criteri verificabili (routing auditabile)
+
+Per evitare drift operativo, il routing e' conforme solo se tutti i controlli sono veri:
+
+1. **Analyst primario per multi-sorgente**: in presenza di correlazione tra >=2 fonti eterogenee o richiesta di dossier/gap analysis, l'intake parte da `mcp-technical-analyst`.
+2. **Orchestrator coordinatore, non intake universale**: `mcp-master-orchestrator` entra quando servono fasi/handoff multi-step; non sostituisce l'intake analitico.
+3. **Stop conditions esplicite**: entrambe le skill core dichiarano condizioni di arresto (conflitto evidenze, ambiguita' bloccante, scope shift).
+4. **Escalation esplicita**: ogni stop condition deve avere uscita deterministica (verso analyst, specialistico o utente).
+5. **Checklist pass/fail**: almeno una checklist operativa deve permettere audit veloce della decisione di routing.
+
 ## 7.3 Skill prioritarie da evolvere
 
 ### 1. `mcp-technical-analyst`

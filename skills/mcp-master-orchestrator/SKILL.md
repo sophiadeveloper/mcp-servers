@@ -41,6 +41,36 @@ Usa questo skill come router quando il prompt richiede **piu fasi** o **piu domi
 
 Regola pratica: **prompt semplice -> skill specialistico**, **prompt composito o con deliverable multipli -> orchestrator + skill primario di dominio**.
 
+## Criteri verificabili di routing (pass/fail)
+
+Applica questi gate in ordine e registra l'esito nel piano operativo.
+
+1. **Gate analyst primario (intake multi-sorgente)**
+   - PASS se il prompt richiede correlazione tra almeno 2 fonti eterogenee (ticket/docs/commit/db/allegati) **oppure** chiede esplicitamente analisi tecnica strutturata.
+   - Azione: `mcp-technical-analyst` diventa skill primario.
+2. **Gate specialistico diretto (mono-dominio)**
+   - PASS se il task e operativo e confinato a un dominio singolo senza ricostruzione cross-sorgente.
+   - Azione: delega subito allo skill specialistico; orchestrator resta fuori dal loop.
+3. **Gate orchestrator coordinatore**
+   - PASS solo se il task ha almeno 2 fasi dipendenti (es. discovery + fix + validazione/report) o richiede handoff tra skill.
+   - Azione: orchestrator coordina sequenza e handoff, ma **non** sostituisce l'intake di `mcp-technical-analyst` nei casi del Gate 1.
+
+Se nessun gate passa chiaramente, esegui discovery minima e rivaluta entro il primo checkpoint.
+
+## Stop conditions ed escalation esplicite
+
+Fermati e ri-escalare quando si verifica almeno una condizione:
+
+- conflitto tra evidenze (ticket vs codice, docs vs DB, test vs log) non risolvibile nella fase corrente;
+- ambiguita' bloccante su repo/ambiente/output finale con impatto materiale sul risultato;
+- il task nasce mono-dominio ma emerge correlazione multi-sorgente significativa.
+
+Escalation obbligatoria:
+
+1. verso `mcp-technical-analyst` se emerge intake analitico multi-sorgente;
+2. verso skill specialistico se il perimetro si restringe a esecuzione pura;
+3. verso utente solo quando mancano dati non ricavabili localmente e la scelta cambia il deliverable.
+
 ## Carica Riferimenti Solo Se Servono
 
 * [references/workflows.md](references/workflows.md) per flussi completi come regressioni, report mensili, onboarding modulo e analisi tecniche multi-sorgente.
