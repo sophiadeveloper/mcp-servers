@@ -7,18 +7,22 @@ const registryTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'office-smoke-regi
 const registryPath = path.join(registryTempDir, 'artifact-registry.json');
 const EXPECTED_PROMPTS = {
   ingest_pdf_into_docs: {
-    required: ['pdf_path', 'save_path', 'shelf_name', 'doc_title'],
+    required: ['pdf_path', 'save_path', 'shelf_name'],
     optional: [],
     arguments: {
       pdf_path: '/tmp/source.pdf',
       save_path: '/tmp/exported.md',
-      shelf_name: 'smoke-shelf',
-      doc_title: 'Smoke PDF'
+      shelf_name: 'smoke-shelf'
     },
     contains: [
       'office-node',
       'docs_management(action="scan_file"',
+      'shelf="smoke-shelf"',
       'docs_navigation.search'
+    ],
+    notContains: [
+      'shelf_name="',
+      'title="'
     ]
   }
 };
@@ -137,6 +141,11 @@ await runSmoke({
         for (const fragment of expected.contains) {
           if (!promptText.includes(fragment)) {
             throw new Error(`prompts/get ${promptName} missing expected fragment "${fragment}": ${JSON.stringify(promptResult)}`);
+          }
+        }
+        for (const fragment of expected.notContains || []) {
+          if (promptText.includes(fragment)) {
+            throw new Error(`prompts/get ${promptName} should not contain fragment "${fragment}": ${JSON.stringify(promptResult)}`);
           }
         }
       }

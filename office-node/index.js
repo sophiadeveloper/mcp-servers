@@ -72,11 +72,6 @@ const PROMPT_METADATA = [
         description: "Nome shelf/collezione destinazione in docs.",
         required: true,
       },
-      {
-        name: "doc_title",
-        description: "Titolo documento da creare/aggiornare.",
-        required: true,
-      },
     ],
   },
 ];
@@ -537,7 +532,6 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const pdfPath = escapePromptArg(args.pdf_path || "<PDF_PATH>");
     const savePath = escapePromptArg(args.save_path || "<SAVE_PATH_MD>");
     const shelfName = escapePromptArg(args.shelf_name || "<SHELF_NAME>");
-    const docTitle = escapePromptArg(args.doc_title || "<DOC_TITLE>");
     return {
       description: "Pipeline minima PDF -> office export markdown -> docs ingestion.",
       messages: [
@@ -546,11 +540,12 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
           content: {
             type: "text",
             text: [
-              `Ingest del PDF ${pdfPath} nella shelf "${shelfName}" con titolo "${docTitle}".`,
+              `Ingest del PDF ${pdfPath} nella shelf "${shelfName}".`,
               `1) Esegui office-node pdf_document(action="export_text", file_path="${pdfPath}", save_path="${savePath}", format="md").`,
               `2) Verifica che il file ${savePath} esista e che l'export sia leggibile (no dump grezzo).`,
-              `3) Esegui docs-node docs_management(action="scan_file", file_path="${savePath}", shelf_name="${shelfName}", title="${docTitle}").`,
-              "4) Verifica reperibilita' via docs_navigation.search e riporta id/URI documento con eventuali limiti di estrazione.",
+              `3) Esegui docs-node docs_management(action="scan_file", file_path="${savePath}", shelf="${shelfName}").`,
+              "4) Se vuoi controllare il titolo, aggiorna l'H1 (`# Titolo`) nel markdown prima della scansione.",
+              "5) Verifica reperibilita' via docs_navigation.search e riporta id/URI documento con eventuali limiti di estrazione.",
             ].join("\n"),
           },
         },
