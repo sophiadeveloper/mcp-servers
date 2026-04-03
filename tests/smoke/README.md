@@ -42,6 +42,8 @@ node tests/smoke/run-all.mjs
 ## Output atteso
 
 Ogni smoke stampa una riga `[PASS] <server>` con numero di tool rilevati.
+
+Nota: `git-node.smoke.mjs` include anche verifica handshake prompt (`prompts/list`, `prompts/get`) e controllo shape argomenti per i prompt MCP esposti dal server Git.
 In caso di errore stampa `[FAIL] <server>` e, se presente, lo `stderr` del server.
 
 ## Smoke bridge `office-node` -> `docs-node`
