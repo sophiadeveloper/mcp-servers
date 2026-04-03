@@ -23,7 +23,9 @@ const EXPECTED_PROMPTS = {
     notContains: [
       'shelf_name="',
       'title="'
-    ]
+    ],
+    scanFileCallContains: ['shelf='],
+    scanFileCallNotContains: ['shelf_name=', 'title=']
   }
 };
 
@@ -66,6 +68,15 @@ function extractTextContent(result) {
     .filter((item) => item?.type === 'text' && typeof item.text === 'string')
     .map((item) => item.text)
     .join('\n');
+}
+
+function extractScanFileCall(promptText) {
+  if (typeof promptText !== 'string' || promptText.length === 0) {
+    return '';
+  }
+
+  const match = promptText.match(/docs_management\(action="scan_file"[\s\S]*?\)/);
+  return match?.[0] ?? '';
 }
 
 function validatePromptMetadata(promptsList) {
@@ -146,6 +157,28 @@ await runSmoke({
         for (const fragment of expected.notContains || []) {
           if (promptText.includes(fragment)) {
             throw new Error(`prompts/get ${promptName} should not contain fragment "${fragment}": ${JSON.stringify(promptResult)}`);
+          }
+        }
+
+        if (Array.isArray(expected.scanFileCallContains) || Array.isArray(expected.scanFileCallNotContains)) {
+          const scanFileCall = extractScanFileCall(promptText);
+          if (!scanFileCall) {
+            throw new Error(`prompts/get ${promptName} missing scan_file call snippet: ${JSON.stringify(promptResult)}`);
+          }
+
+          for (const fragment of expected.scanFileCallContains || []) {
+            if (!scanFileCall.includes(fragment)) {
+              throw new Error(
+                `prompts/get ${promptName} scan_file call missing fragment "${fragment}": ${JSON.stringify(promptResult)}`
+              );
+            }
+          }
+          for (const fragment of expected.scanFileCallNotContains || []) {
+            if (scanFileCall.includes(fragment)) {
+              throw new Error(
+                `prompts/get ${promptName} scan_file call should not contain fragment "${fragment}": ${JSON.stringify(promptResult)}`
+              );
+            }
           }
         }
       }
