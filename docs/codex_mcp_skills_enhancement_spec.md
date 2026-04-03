@@ -12,6 +12,7 @@ Per il lavoro corrente usare:
 
 1. **Guida viva**: `docs/mcp-skills-agents-development-guide.md`
 2. **Storico milestone completate (M0-M6)**: `docs/completed-milestones-mcp-skills.md`
+3. **Backlog futuro (dettaglio M7/M8)**: `docs/future-backlog-mcp-skills.md`
 
 ## Cosa resta valido di questa spec storica
 
@@ -25,4 +26,4 @@ Il razionale architetturale rimane coerente con i seguenti principi, ora mantenu
 ## Nota di migrazione documentale
 
 - backlog storico M0-M6: **spostato** nello storico dedicato;
-- backlog attivo futuro (M7/M8+): **mantenuto** nella guida viva, in forma sintetica e action-oriented.
+- backlog attivo futuro (M7/M8+): **mantenuto** nella guida viva in forma sintetica, con dettaglio operativo in `docs/future-backlog-mcp-skills.md`.
