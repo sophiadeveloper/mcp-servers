@@ -1,0 +1,40 @@
+{
+  "skill_name": "mcp-docs-navigator",
+  "eval_focus": [
+    "discovery-and-tagging-corpus",
+    "office-ingest-then-scan-file-with-tagging",
+    "escalation-to-technical-analyst-for-multi-source-requests"
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Scansiona la cartella docs/procedure, individua i documenti su onboarding clienti e applica tag coerenti per dominio e processo.",
+      "expected_output": "Uso di mcp-docs-navigator per discovery del corpus, ricerca mirata e tagging consistente dei documenti rilevanti.",
+      "expectations": [
+        "Riconosce un task di discovery/tagging documentale e instrada a mcp-docs-navigator",
+        "Prevede scan_folder/list_documents o search per restringere il corpus prima del tagging",
+        "Applica convenzioni di tag coerenti evitando operazioni massive non necessarie"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Ho un file DOCX esportato dal team compliance: rendilo ricercabile nel corpus, poi aggiorna l'indice e aggiungi i tag compliance e procedura-operativa.",
+      "expected_output": "Flusso con passaggio iniziale da mcp-office-expert per normalizzare l'office document, seguito da scan_file e tagging con mcp-docs-navigator.",
+      "expectations": [
+        "Instrada prima a mcp-office-expert per conversione/estrazione testo da DOCX",
+        "Rientra su mcp-docs-navigator con scan_file sul Markdown prodotto",
+        "Completa con assegnazione tag mirati e verificabili"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Partendo da ticket Jira, note in documentazione e ultimi commit Git, fammi un'analisi unica delle cause del bug e proponi remediation.",
+      "expected_output": "Escalation verso mcp-technical-analyst per analisi multi-sorgente, con mcp-docs-navigator usato solo come supporto per la parte documentale.",
+      "expectations": [
+        "Classifica la richiesta come multi-sorgente (ticket + docs + commit)",
+        "Esegue handoff a mcp-technical-analyst come skill primaria",
+        "Mantiene mcp-docs-navigator in ruolo di supporto per retrieval/tagging documentale"
+      ]
+    }
+  ]
+}
