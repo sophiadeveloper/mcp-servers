@@ -24,6 +24,20 @@ Non usarlo se il task e chiaramente mono-dominio e puo essere risolto direttamen
 - solo debug CFML;
 - sola automazione browser.
 
+## Regole di escalation prompt -> skill
+
+Applica l'escalation a `mcp-technical-analyst` quando il prompt contiene una o piu richieste di **ricostruzione tecnica multi-sorgente**. Trigger tipici:
+
+- "analisi tecnica", "stato dell'arte", "gap analysis", "dossier", "allinea ticket-doc-codice";
+- richiesta di collegare ticket + commit + documenti + dati;
+- richiesta di distinguere fatto/inferenza/punti aperti con output strutturato.
+
+Escalation consigliata:
+
+1. Se il prompt e breve o ambiguo, parti con `ticket-first-light`.
+2. Se emergono dipendenze tra piu repository, DB, ambienti o allegati eterogenei, passa a `ticket-first` completo.
+3. Se il prompt e puramente operativo su un solo dominio (solo SQL, solo docs, solo CFML), non forzare questo skill: instrada allo specialistico e mantieni `mcp-technical-analyst` solo come coordinatore se serve report finale.
+
 ## Principi operativi
 
 1. Parti sempre dai fatti disponibili e fai discovery prima di fare domande.

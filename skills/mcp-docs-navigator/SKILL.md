@@ -23,6 +23,20 @@ Questo skill ottimizza accesso e manutenzione della documentazione di progetto u
 * Dopo aver creato report o guide con `mcp-office-expert`, esegui `scan_file` e assegna tag coerenti.
 * Cerca snippet o procedure esistenti prima di riscriverli da zero.
 
+## Regole di escalation prompt -> skill
+
+Escala a `mcp-docs-navigator` quando il prompt chiede discovery o manutenzione del corpus documentale:
+
+- ricerca procedure/regole di business;
+- tagging, classificazione, scansione o riallineamento di scaffali docs;
+- recupero rapido di sezioni specifiche da Markdown lunghi.
+
+Escalation secondaria:
+
+1. Se la fonte e un PDF/DOCX/XLSX non ancora normalizzato, passa prima da `mcp-office-expert` e poi torna qui per `scan_file` + tagging.
+2. Se i contenuti docs vanno correlati con ticket/commit/database per una valutazione completa, passa a `mcp-technical-analyst`.
+3. Se il prompt e esclusivamente operativo su codice o DB senza bisogno di corpus docs, delega allo skill tecnico dedicato.
+
 ## Carica Riferimenti Solo Se Servono
 
 * [references/tagging-strategy.md](references/tagging-strategy.md) per convenzioni di tag e combinazioni pratiche.
