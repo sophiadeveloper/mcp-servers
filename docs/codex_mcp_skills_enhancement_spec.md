@@ -664,6 +664,8 @@ Note operative rapide:
 
 - "Implementato ora" indica prompt gia' esposto via `prompts/list` + `prompts/get`.
 - "Rimandato" indica candidato mantenuto in roadmap: il workflow resta coperto da skill o prompt adiacenti finche' non viene introdotto il nome definitivo.
+- la famiglia `technical_analysis_*` resta **skill-first per design**: i prompt MCP associati (quando presenti) devono rimanere thin wrapper di ingresso, senza sostituire il workflow completo della skill.
+- il kickoff light da ticket e' coperto dalla variante skill `ticket-first-light` (`mcp-technical-analyst`) e **non** da un prompt universale, per evitare compressione impropria del ragionamento analitico.
 
 ### Regole
 
@@ -671,6 +673,7 @@ Note operative rapide:
 - ogni prompt deve avere argomenti chiari
 - i prompt non devono duplicare tutto `SKILL.md`, ma incapsulare il flusso minimo utile
 - non comprimere troppo presto tutta la skill `mcp-technical-analyst` in un solo prompt generico
+- evitare prompt "intake universale" per il kickoff da ticket: usare `ticket-first-light` come percorso standard e fare escalation esplicita quando emergono segnali multi-sorgente
 
 ### Criteri di accettazione
 
