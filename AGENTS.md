@@ -5,6 +5,7 @@ I dettagli operativi estesi sono nella guida viva:
 
 - `docs/mcp-skills-agents-development-guide.md`
 - storico milestone completate: `docs/completed-milestones-mcp-skills.md`
+- backlog futuro (dettaglio M7/M8): `docs/future-backlog-mcp-skills.md`
 - skill locali in `skills/` (+ eventuale documentazione locale dei server)
 
 ## 1) Priorita' e modalita' operative

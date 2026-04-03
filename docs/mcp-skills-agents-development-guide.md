@@ -7,7 +7,7 @@ Questa guida sostituisce l'uso operativo della vecchia spec ibrida e separa in m
 
 - linee guida vive (questo documento);
 - storico milestone completate (`docs/completed-milestones-mcp-skills.md`);
-- roadmap futura residua (Milestone 7/8+), mantenuta qui in forma essenziale.
+- roadmap futura residua (Milestone 7/8+), con sintesi qui e dettaglio in `docs/future-backlog-mcp-skills.md`.
 
 ## 1) Ambito e obiettivo
 
@@ -132,6 +132,10 @@ Questa guida considera **attivo** solo il backlog post-M6:
 - **Milestone 7**: `projectfs-node` read-only, whitelist-constrained, cross-platform, con test di sicurezza/containment.
 - **Milestone 8**: packaging/distribuzione e razionalizzazione configurazioni host-specifiche.
 
+Dettaglio operativo futuro:
+
+- `docs/future-backlog-mcp-skills.md`
+
 Il dettaglio storico M0-M6 e' stato spostato in:
 
 - `docs/completed-milestones-mcp-skills.md`
@@ -140,6 +144,7 @@ Il dettaglio storico M0-M6 e' stato spostato in:
 
 - Guida viva: `docs/mcp-skills-agents-development-guide.md`
 - Storico milestone completate: `docs/completed-milestones-mcp-skills.md`
+- Backlog futuro (dettaglio M7/M8): `docs/future-backlog-mcp-skills.md`
 - Capability matrix server: `docs/server-capability-matrix.md`
 - Governance matrix skill: `docs/skill-governance-matrix.md`
 - PR checklist: `docs/pr-checklist-mcp.md`
