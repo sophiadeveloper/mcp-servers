@@ -580,15 +580,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           values: {
             type: "array",
+            minItems: 1,
             items: {
               type: "array",
+              minItems: 1,
               items: excelCellSchema,
+              description:
+                "Riga di celle da scrivere. Ogni elemento rappresenta una cella nella riga (da sinistra a destra).",
             },
             description:
-              "Array 2D di valori da scrivere (necessario per 'write_cells'). Ogni elemento dell'array esterno e' una riga.",
+              "Array 2D di valori da scrivere (necessario per 'write_cells'). Deve contenere almeno una riga e ogni riga almeno una cella.",
           },
           sheets: {
             type: "array",
+            minItems: 1,
             items: {
               type: "object",
               properties: {
@@ -598,14 +603,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                   items: {
                     type: "array",
                     items: excelCellSchema,
+                    description:
+                      "Riga di celle del foglio. Ogni elemento rappresenta una cella nella riga (da sinistra a destra).",
                   },
-                  description: "Dati del foglio come array 2D.",
+                  description:
+                    "Dati del foglio come array 2D. Può essere vuoto per creare un foglio senza dati iniziali.",
                 },
               },
-              required: ["name"],
+              required: ["name", "values"],
             },
             description:
-              "Array di fogli da creare (necessario per 'create'). Se omesso, crea un foglio vuoto 'Sheet1'.",
+              "Array di fogli da creare (necessario per 'create'). Deve contenere almeno un foglio; se omesso, crea un foglio vuoto 'Sheet1'.",
           },
         },
         required: ["action", "file_path"],
