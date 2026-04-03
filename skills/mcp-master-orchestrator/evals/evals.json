@@ -1,0 +1,40 @@
+{
+  "skill_name": "mcp-master-orchestrator",
+  "eval_focus": [
+    "routing-to-technical-analyst-for-multi-source-analysis",
+    "routing-to-specialist-for-single-domain-tasks",
+    "limited-sidecar-usage-per-phase"
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Parti da un ticket con allegato DOCX, verifica commit correlati e allinea con DB QA prima di proporre un piano di fix.",
+      "expected_output": "Routing verso mcp-technical-analyst come primario, con orchestrator usato per coordinare fasi e handoff.",
+      "expectations": [
+        "Riconosce il task come multi-sorgente e passa da mcp-technical-analyst",
+        "Mantiene orchestrator nel ruolo di coordinamento e non intake universale",
+        "Definisce fasi con handoff espliciti verso eventuali skill specialistiche"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Esegui una query DB per verificare una tabella e genera un breve commento con il risultato.",
+      "expected_output": "Routing diretto verso skill specialistica database senza escalation superflue all'orchestrator.",
+      "expectations": [
+        "Classifica il task come mono-dominio operativo",
+        "Instrada direttamente verso mcp-database-expert",
+        "Evita sidecar non necessari"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Gestisci un bug con tre fasi: discovery da ticket, fix CFML e validazione UI finale con report di consegna.",
+      "expected_output": "Piano per fasi con sidecar limitati per fase (es. analyst -> coldfusion -> browser -> office/docs).",
+      "expectations": [
+        "Definisce una sequenza ordinata per dipendenze",
+        "Usa al massimo uno o due sidecar per fase",
+        "Produce handoff puliti e verificabili tra una fase e l'altra"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "skill_name": "mcp-git-mantis-workflow",
+  "eval_focus": [
+    "rebase-preflight",
+    "semantic-conflict-analysis",
+    "compare-with-target-and-original-source-branch",
+    "post-rebase-verification",
+    "human-review-stop-conditions"
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Prima di un rebase della feature branch, esegui preflight completo: stato working tree, allineamento branch, commit range da riscrivere e rischi principali.",
+      "expected_output": "Checklist preflight con verifiche bloccanti/non bloccanti e decisione go/no-go.",
+      "expectations": [
+        "Controlla stato repo e pulizia working tree",
+        "Valida base branch e range commit da riscrivere",
+        "Esplicita rischi e prerequisiti prima del rebase"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Durante il rebase sono emersi conflitti su file CFML e query SQL: esegui analisi dei semantic conflict e proponi risoluzione tracciabile.",
+      "expected_output": "Diagnosi dei conflitti semantici oltre il merge testuale, con piano di risoluzione motivato.",
+      "expectations": [
+        "Distingue conflitti testuali da conflitti semantici",
+        "Usa evidenze da blame/history o ticket per scegliere la risoluzione",
+        "Documenta trade-off e impatto della scelta"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Verifica che la serie rebased sia equivalente alla serie originale confrontando branch target e branch sorgente pre-rebase.",
+      "expected_output": "Confronto rigoroso tra serie originale e riscritta (range equivalenti) con esito di equivalenza/non equivalenza.",
+      "expectations": [
+        "Imposta range coerenti prima di invocare range_diff",
+        "Interpreta only_left/only_right in relazione all'equivalenza logica",
+        "Segnala chiaramente eventuali commit persi, duplicati o alterati"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Dopo il rebase, esegui post-rebase verification con controlli minimi e prepara nota tecnica per handoff.",
+      "expected_output": "Verifiche finali post-rebase e handoff con prove verificabili.",
+      "expectations": [
+        "Esegue controlli finali su history/stato/diff rilevanti",
+        "Registra evidenze sintetiche ma verificabili",
+        "Prepara handoff verso skill tecnica o reviewer umano"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Identifica quando interrompere il flusso automatico e fermarsi per review umana in un rebase complesso.",
+      "expected_output": "Elenco di stop condition ad alto rischio con criterio esplicito di escalation umana.",
+      "expectations": [
+        "Riconosce conflitti ad alta ambiguita o impatto business",
+        "Evita automazione forzata in assenza di prove sufficienti",
+        "Propone escalation con contesto minimo necessario per il reviewer"
+      ]
+    }
+  ]
+}
