@@ -14,6 +14,63 @@ Usa questo riferimento quando il task richiede una sequenza esplicita di piu ski
 
 Regola pratica: prompt MCP per discoverability e start rapido; skill per esecuzione completa, portabile e verificabile.
 
+## Prompt di orchestrazione subagent (explorer vs implementer)
+
+Usa questo blocco quando devi orchestrare subagent custom (`explorer`, `implementer`) in task complessi.
+
+### Quando usare `explorer`
+
+Usa `explorer` per fasi di **ricognizione e riduzione incertezza**, senza cambiare codice:
+
+1. mappatura rapida di repository, moduli, dipendenze o capability MCP;
+2. confronto tra fonti (ticket/docs/commit/log) per definire il perimetro;
+3. preparazione piano operativo con rischi, gap e ipotesi verificabili.
+
+Evita `explorer` se la fase richiede gia' una modifica concreta: in quel caso passa a `implementer`.
+
+### Quando usare `implementer`
+
+Usa `implementer` per fasi di **esecuzione controllata**:
+
+1. modifica incrementale di codice/config/documentazione;
+2. test/smoke/check locali legati alla modifica;
+3. preparazione evidenze di output (diff, log test, note di validazione).
+
+Evita `implementer` per intake ambiguo o analisi cross-sorgente incompleta: prima chiudi una fase `explorer` o passa da `mcp-technical-analyst`.
+
+### Limiti di parallelismo (max agenti per fase)
+
+Per contenere rumore e conflitti, applica limiti fissi:
+
+- fase di discovery (`explorer`): **max 2 agenti paralleli**;
+- fase di implementazione (`implementer`): **max 1 agente attivo** sullo stesso `project_path`;
+- fase di validazione/report: **max 2 agenti paralleli** (es. test + packaging evidenze), solo dopo freeze delle modifiche.
+
+Se una fase supera questi limiti, spezzala in sotto-fasi sequenziali con handoff esplicito.
+
+### Limite profondita' handoff/escalation
+
+Imposta un tetto per evitare loop di delega:
+
+- profondita' massima consigliata: **2 livelli** oltre l'orchestrator (es. orchestrator -> explorer -> specialistico);
+- al terzo handoff consecutivo senza decisione operativa, fermati e riesegui triage;
+- non fare ping-pong tra `explorer` e `implementer` piu' di **1 volta** sullo stesso sotto-task senza nuova evidenza.
+
+### Stop conditions per fallback umano
+
+Attiva fallback umano (reviewer/owner) quando si verifica almeno una condizione:
+
+1. conflitto critico tra evidenze che resta irrisolto dopo 1 ciclo explorer+implementer;
+2. impatto potenzialmente distruttivo o non reversibile (dati, sicurezza, compliance) senza guardrail verificabili;
+3. blocco su prerequisiti esterni non accessibili localmente (permessi, segreti, ambiente, ticket incompleto);
+4. superamento dei limiti: >2 agenti richiesti nella stessa fase o profondita' handoff >2.
+
+Nel fallback umano, consegna sempre:
+
+- stato corrente (fatti verificati);
+- opzioni decisionali mutuamente esclusive;
+- raccomandazione motivata e rischio residuo.
+
 ## Analisi Tecnica Multi-Sorgente
 
 1. `mcp-technical-analyst`: imposta intake, fonti, deliverable e gap aperti.
