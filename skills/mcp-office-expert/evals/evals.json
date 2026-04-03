@@ -1,0 +1,40 @@
+{
+  "skill_name": "mcp-office-expert",
+  "eval_focus": [
+    "word-edit-flow-controllato",
+    "excel-report-flow",
+    "pdf-export-text-plus-handoff-docs"
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Apri un documento Word con note sparse, applica le correzioni richieste in ordine, chiedi conferma prima delle modifiche invasive e restituisci il file finale con changelog sintetico.",
+      "expected_output": "Flusso Word controllato con step ordinati, checkpoint di conferma e output finale coerente.",
+      "expectations": [
+        "Distingue tra modifiche sicure e modifiche invasive",
+        "Introduce un checkpoint esplicito prima delle operazioni distruttive",
+        "Consegna documento aggiornato con riepilogo delle modifiche"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Partendo da un CSV vendite mensili, crea un report Excel con pivot per area, KPI principali e foglio executive summary pronto per condivisione.",
+      "expected_output": "Report Excel completo con trasformazione dati, metriche aggregate e layout leggibile per stakeholder.",
+      "expectations": [
+        "Importa e normalizza i dati tabellari",
+        "Costruisce aggregazioni/pivot coerenti con il brief",
+        "Produce un foglio di sintesi con KPI e indicazioni di lettura"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Esegui export_text da un PDF multi-sezione e prepara un handoff documentale con estratti, decisioni e prossimi passi per il team operativo.",
+      "expected_output": "Estrazione testo affidabile dal PDF e pacchetto di handoff docs strutturato e riusabile.",
+      "expectations": [
+        "Usa export_text preservando struttura minima utile (sezioni/paragrafi)",
+        "Evidenzia i contenuti rilevanti per il passaggio di consegne",
+        "Consegna handoff docs con azioni, owner e next step"
+      ]
+    }
+  ]
+}
