@@ -424,6 +424,19 @@ Codex deve applicare questa euristica prima di scegliere una skill:
 - **task esecutivo o mono-dominio** -> parti dalla skill specialistica piu' vicina
 - **task ampio, multi-fase, con sotto-obiettivi diversi** -> usa `mcp-master-orchestrator`, ma fai delegare la fase analitica a `mcp-technical-analyst`
 
+### Tabella decisionale: quando usare prompt MCP vs skill
+
+| Scenario operativo | Preferisci prompt MCP | Preferisci skill | Note di compatibilita' |
+| --- | --- | --- | --- |
+| Avvio rapido di un workflow frequente e ben standardizzato | Si, soprattutto se vuoi discoverability nativa nel client MCP | Solo se serve una variante procedurale non coperta dal prompt | Mantieni sempre una controparte skill per host MCP con supporto prompt parziale |
+| Task complesso multi-fase con dipendenze tra domini | Solo come entrypoint o checklist iniziale | Si, usa skill (eventualmente orchestrate) per esecuzione completa | La skill resta il fallback principale cross-host |
+| Analisi tecnica multi-sorgente (ticket + doc + allegati + commit) | Prompt utile per kickoff e raccolta parametri | Si, `mcp-technical-analyst` e' la scelta primaria | Evita prompt monolitici che comprimono tutto il ragionamento |
+| Esecuzione mono-dominio (DB, docs, browser, office, CF) | Prompt opzionale per task ripetibili e semplici | Si, skill specialistica come default operativo | Mantieni i pattern legacy (`action`, `project_path`, `save_path`) |
+| Onboarding di utenti nuovi o occasionali | Si, per guidare input minimi e ridurre errori | Si, quando servono procedure complete e verificabili | Prompt per discoverability, skill per robustezza |
+| Client/host con supporto MCP eterogeneo o limitato | Non come unico canale | Si, per massima portabilita' e prevedibilita' | Se introduci un prompt, documenta sempre il fallback skill equivalente |
+
+Regola pratica: **prompt MCP per ingresso rapido e discoverability; skill per orchestrazione robusta, portabile e verificabile**.
+
 ## 8. Integrazione specifica con Codex
 
 ## 8.1 Architettura Codex consigliata
