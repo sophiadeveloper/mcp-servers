@@ -22,8 +22,12 @@ Marca ogni riga come `PASS` o `FAIL`:
 * [ ] `PASS/FAIL` — Ho verificato se il task e multi-sorgente (>=2 fonti eterogenee) prima di scegliere lo skill primario.
 * [ ] `PASS/FAIL` — Se multi-sorgente, ho assegnato `mcp-technical-analyst` come intake primario.
 * [ ] `PASS/FAIL` — Ho usato `mcp-master-orchestrator` solo per coordinare fasi/handoff e non come intake universale.
+* [ ] `PASS/FAIL` — Ho scelto `explorer` solo per discovery/ricognizione e `implementer` solo per esecuzione/test.
+* [ ] `PASS/FAIL` — Ho rispettato i limiti di parallelismo per fase (discovery max 2, implementazione max 1, validazione max 2).
+* [ ] `PASS/FAIL` — Ho rispettato profondita' handoff/escalation <=2 livelli oltre l'orchestrator.
 * [ ] `PASS/FAIL` — Ho esplicitato almeno una stop condition tecnica (conflitto evidenze, ambiguita' bloccante, scope shift).
 * [ ] `PASS/FAIL` — Ho dichiarato l'escalation applicata (analyst, specialistico o utente) con motivazione breve.
+* [ ] `PASS/FAIL` — Se scatta fallback umano, ho fornito stato verificato, opzioni decisionali e raccomandazione motivata.
 
 ## Errori Comuni
 
