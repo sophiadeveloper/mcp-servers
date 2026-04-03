@@ -474,13 +474,16 @@ Deve contenere solo:
 
 Creare agenti stretti e opinionated, non generici.
 
-Proposta iniziale:
+Profili attualmente presenti in `.codex/agents/`:
 
-- `mcp_explorer.toml` — lettura e mappatura capability attuali
-- `mcp_implementer.toml` — implementazione incrementale e test
-- `docs_researcher.toml` — verifica spec/API/documentazione
-- `skill_evaluator.toml` — test di trigger e qualita' skill
-- `technical_analyst.toml` — intake e ricostruzione multi-sorgente, allineato a `mcp-technical-analyst`
+- `explorer.md` — lettura e mappatura capability attuali
+- `implementer.md` — implementazione incrementale e test
+- `technical_analyst.md` — intake e ricostruzione multi-sorgente, allineato a `mcp-technical-analyst`
+
+Profili opzionali (non ancora implementati nel repository):
+
+- `docs_researcher` — verifica spec/API/documentazione
+- `skill_evaluator` — test di trigger e qualita' skill
 
 ## 8.3 Esempio di custom agent: explorer
 
