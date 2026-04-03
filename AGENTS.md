@@ -1,14 +1,15 @@
 # AGENTS.md - Governance minima (Milestone 0)
 
 Questo file contiene **solo regole permanenti concise** e routing essenziale.
-I dettagli operativi estesi sono nella spec:
+I dettagli operativi estesi sono nella guida viva:
 
-- `docs/codex_mcp_skills_enhancement_spec.md`
+- `docs/mcp-skills-agents-development-guide.md`
+- storico milestone completate: `docs/completed-milestones-mcp-skills.md`
 - skill locali in `skills/` (+ eventuale documentazione locale dei server)
 
 ## 1) Priorita' e modalita' operative
 
-1. Applica prima questo file, poi la spec tecnica e le skill rilevanti.
+1. Applica prima questo file, poi la guida tecnica viva e le skill rilevanti.
 2. Mantieni compatibilita' legacy salvo istruzioni esplicite contrarie.
 3. Preferisci cambi incrementali, una milestone/PR per volta.
 4. Non fare refactor estesi fuori scope.
@@ -40,6 +41,6 @@ Una modifica e' chiusa quando:
 
 ## 5) Dove trovare il dettaglio esteso
 
-Per standard completi (condensazione tool, sicurezza, output strutturati, roadmap capability, checklist PR, test strategy), fare riferimento alla spec:
+Per standard completi (policy MCP, sicurezza, output strutturati, backlog futuro, checklist PR, test strategy), fare riferimento alla guida viva:
 
-- `docs/codex_mcp_skills_enhancement_spec.md`
+- `docs/mcp-skills-agents-development-guide.md`

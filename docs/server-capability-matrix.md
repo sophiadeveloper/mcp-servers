@@ -2,6 +2,10 @@
 
 Questa matrice e' compilata **da analisi statica del codice corrente** (senza handshake runtime), come baseline Milestone 0.
 
+Riferimenti di governance aggiornati:
+- guida viva: `docs/mcp-skills-agents-development-guide.md`
+- storico milestone completate: `docs/completed-milestones-mcp-skills.md`
+
 Legenda rapida:
 - ✅ presente/implementato
 - ❌ non presente
@@ -27,4 +31,4 @@ Legenda rapida:
 
 ## Nota operativa
 
-Questa tabella e' una baseline utile per pianificare milestone incrementalmente (es. `git-node` pilot modernizzazione, `docs-node` resource-native, `office-node` hardening schema-compatibility).
+Questa tabella resta una baseline utile per pianificare milestone incrementalmente (es. `git-node` pilot modernizzazione, `docs-node` resource-native, `office-node` hardening schema-compatibility).
