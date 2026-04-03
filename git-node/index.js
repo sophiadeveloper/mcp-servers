@@ -52,6 +52,72 @@ const TOOL_METADATA = {
 
 const PROMPT_METADATA = [
   {
+    name: "triage_bug_ticket",
+    title: "Triage Bug Ticket",
+    description: "Flusso minimo per triage tecnico di un bug: contesto, verifica segnali e piano di indagine.",
+    arguments: [
+      {
+        name: "ticket_id",
+        description: "Identificativo ticket (es. MANTIS-1234).",
+        required: true
+      },
+      {
+        name: "project_path",
+        description: "Path repository per analisi codice/Git.",
+        required: true
+      },
+      {
+        name: "focus_area",
+        description: "Modulo/file o area funzionale da verificare per prima.",
+        required: false
+      }
+    ]
+  },
+  {
+    name: "post_fix_validation",
+    title: "Post Fix Validation",
+    description: "Checklist breve per validare una fix dopo implementazione prima del passaggio in review/QA.",
+    arguments: [
+      {
+        name: "project_path",
+        description: "Path repository della fix.",
+        required: true
+      },
+      {
+        name: "source_branch",
+        description: "Branch della fix da validare (default: HEAD).",
+        required: false
+      },
+      {
+        name: "target_branch",
+        description: "Branch base di confronto (default: origin/main).",
+        required: false
+      }
+    ]
+  },
+  {
+    name: "ingest_pdf_into_docs",
+    title: "Ingest PDF into Docs",
+    description: "Istruzioni essenziali per estrarre testo da PDF e pubblicarlo nella documentazione indicizzata.",
+    arguments: [
+      {
+        name: "pdf_path",
+        description: "Path locale del PDF sorgente.",
+        required: true
+      },
+      {
+        name: "shelf_name",
+        description: "Nome shelf/collezione destinazione in docs.",
+        required: true
+      },
+      {
+        name: "doc_title",
+        description: "Titolo documento da creare/aggiornare.",
+        required: true
+      }
+    ]
+  },
+  {
     name: "git_review_workflow",
     title: "Git Review Workflow",
     description: "Checklist operativa per review read-only (stato, storia, compare) senza modificare il repository.",
@@ -641,6 +707,78 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
               `2) git_query(action=history, project_path="${projectPath}", commit_ref="${sourceBranch}", max_count=20)`,
               `3) git_diff(action=compare, project_path="${projectPath}", source="${sourceBranch}", target="${targetBranch}", diff_mode="three_dot", stat=true)`,
               "Riassumi rischi, file impattati e verifica se servono approfondimenti con commit_info/show."
+            ].join("\n")
+          }
+        }
+      ]
+    };
+  }
+
+  if (name === "triage_bug_ticket") {
+    const ticketId = escapePromptArg(args.ticket_id || "<TICKET_ID>");
+    const projectPath = escapePromptArg(args.project_path || "<PROJECT_PATH>");
+    const focusArea = escapePromptArg(args.focus_area || "<FOCUS_AREA_OPTIONAL>");
+    return {
+      description: "Triage tecnico rapido con evidenze e prossimi step.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              `Esegui triage del ticket ${ticketId} in ${projectPath}.`,
+              `1) Raccogli sintomo, impatto e ambiente; usa ${focusArea} come priorita' se valorizzato.`,
+              "2) Verifica rapidamente segnali tecnici (history/diff/log/errori) senza modificare codice.",
+              "3) Separa fatti, ipotesi e buchi informativi.",
+              "4) Chiudi con piano minimo: riproduzione, file/owner da coinvolgere, severita' proposta."
+            ].join("\n")
+          }
+        }
+      ]
+    };
+  }
+
+  if (name === "post_fix_validation") {
+    const projectPath = escapePromptArg(args.project_path || "<PROJECT_PATH>");
+    const sourceBranch = escapePromptArg(args.source_branch || "HEAD");
+    const targetBranch = escapePromptArg(args.target_branch || "origin/main");
+    return {
+      description: "Validazione post-fix sintetica prima di review/QA.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              `Valida la fix su ${projectPath} confrontando ${sourceBranch} vs ${targetBranch}.`,
+              "1) Controlla stato repo e diff effettivo della fix.",
+              "2) Verifica che il delta sia coerente col bug (nessun cambiamento fuori scope evidente).",
+              "3) Esegui/riporta smoke o check disponibili e segnala eventuali gap.",
+              "4) Produci esito finale: OK, KO o OK con rischi residui e follow-up."
+            ].join("\n")
+          }
+        }
+      ]
+    };
+  }
+
+  if (name === "ingest_pdf_into_docs") {
+    const pdfPath = escapePromptArg(args.pdf_path || "<PDF_PATH>");
+    const shelfName = escapePromptArg(args.shelf_name || "<SHELF_NAME>");
+    const docTitle = escapePromptArg(args.doc_title || "<DOC_TITLE>");
+    return {
+      description: "Pipeline minima PDF -> docs indicizzati.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              `Ingest del PDF ${pdfPath} nella shelf "${shelfName}" con titolo "${docTitle}".`,
+              "1) Estrai testo/metadata dal PDF e normalizza contenuto utile (niente dump grezzo).",
+              "2) Crea o aggiorna documento nella shelf target mantenendo struttura leggibile.",
+              "3) Aggiungi tag minimi (fonte, data, dominio) e verifica reperibilita' via ricerca.",
+              "4) Riporta URI/id documento creato e eventuali limiti di estrazione."
             ].join("\n")
           }
         }

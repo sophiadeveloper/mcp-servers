@@ -30,7 +30,7 @@ await runSmoke({
   args: ['git-node/index.js'],
   afterInitialize: async ({ request }) => {
     const promptsList = await request('prompts/list', {});
-    if (!Array.isArray(promptsList?.prompts) || promptsList.prompts.length < 2) {
+    if (!Array.isArray(promptsList?.prompts) || promptsList.prompts.length < 5) {
       throw new Error(`prompts/list missing expected prompts: ${JSON.stringify(promptsList)}`);
     }
 
@@ -45,6 +45,18 @@ await runSmoke({
     const reviewText = reviewPrompt?.messages?.[0]?.content?.text || '';
     if (!reviewText.includes('git_diff(action=compare') || !reviewText.includes('feature/refactor')) {
       throw new Error(`prompts/get git_review_workflow payload invalid: ${JSON.stringify(reviewPrompt)}`);
+    }
+
+    const triagePrompt = await request('prompts/get', {
+      name: 'triage_bug_ticket',
+      arguments: {
+        ticket_id: 'MANTIS-42',
+        project_path: '/tmp/example-repo'
+      }
+    });
+    const triageText = triagePrompt?.messages?.[0]?.content?.text || '';
+    if (!triageText.includes('MANTIS-42') || !triageText.includes('piano minimo')) {
+      throw new Error(`prompts/get triage_bug_ticket payload invalid: ${JSON.stringify(triagePrompt)}`);
     }
 
     const { repoPath, leftRef, rightRef } = setupTempRepo();
