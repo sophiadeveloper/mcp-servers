@@ -11,8 +11,11 @@ import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import WordExtractor from "word-extractor";
 import fs from "fs";
 import path from "path";
+import { createHash, randomUUID } from "crypto";
+import { fileURLToPath } from "url";
 
 const XLSX = createRequire(import.meta.url)("xlsx");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -36,6 +39,54 @@ const excelCellSchema = {
   anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
   description: "Valore di una cella Excel.",
 };
+const OFFICE_ARTIFACT_REGISTRY_PATH =
+  process.env.OFFICE_ARTIFACT_REGISTRY_PATH ||
+  path.join(__dirname, "artifact-registry.json");
+
+function createArtifactUri(savePath) {
+  const now = new Date();
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const suffix =
+    typeof randomUUID === "function"
+      ? randomUUID()
+      : createHash("sha256").update(`${savePath}|${now.toISOString()}`).digest("hex").slice(0, 32);
+  return `artifact://office/${year}/${month}/${suffix}`;
+}
+
+function appendToArtifactRegistry({ savePath, mimeType, producerTool }) {
+  const createdAt = new Date().toISOString();
+  const artifactUri = createArtifactUri(savePath);
+  const record = {
+    artifact_uri: artifactUri,
+    save_path: savePath,
+    mime_type: mimeType,
+    producer_tool: producerTool,
+    created_at: createdAt,
+  };
+
+  try {
+    const registryDir = path.dirname(OFFICE_ARTIFACT_REGISTRY_PATH);
+    fs.mkdirSync(registryDir, { recursive: true });
+
+    let entries = [];
+    if (fs.existsSync(OFFICE_ARTIFACT_REGISTRY_PATH)) {
+      const raw = fs.readFileSync(OFFICE_ARTIFACT_REGISTRY_PATH, "utf8").trim();
+      if (raw.length > 0) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          entries = parsed;
+        }
+      }
+    }
+
+    entries.push(record);
+    fs.writeFileSync(OFFICE_ARTIFACT_REGISTRY_PATH, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+    return { available: true, record };
+  } catch {
+    return { available: false, record };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // .docx helpers
@@ -800,6 +851,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const outputDir = path.dirname(savePath);
             fs.mkdirSync(outputDir, { recursive: true });
             fs.writeFileSync(savePath, output, "utf8");
+            const mimeType = format === "md" ? "text/markdown" : "text/plain";
+            const registryResult = appendToArtifactRegistry({
+              savePath,
+              mimeType,
+              producerTool: "pdf_document.export_text",
+            });
+            const registryLines = registryResult.available
+              ? [
+                  `Artifact URI: ${registryResult.record.artifact_uri}`,
+                  `Registry: ${OFFICE_ARTIFACT_REGISTRY_PATH}`,
+                ]
+              : [
+                  "Artifact URI: non disponibile (registry non scrivibile)",
+                  "Registry warning: export completato con fallback legacy su save_path.",
+                ];
 
             return {
               content: [
@@ -808,7 +874,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   text:
                     `OK Testo PDF esportato in: ${savePath}\n` +
                     `Formato: ${format}\n` +
-                    `Pagine esportate: ${pages.length}`,
+                    `Pagine esportate: ${pages.length}\n` +
+                    registryLines.join("\n"),
                 },
               ],
             };
