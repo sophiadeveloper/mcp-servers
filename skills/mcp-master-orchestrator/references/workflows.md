@@ -12,6 +12,14 @@ Usa questo riferimento quando il task richiede una sequenza esplicita di piu ski
 6. `mcp-browser-automation`: usa Playwright solo se serve una prova funzionale o browser-side.
 7. `mcp-docs-navigator`: indicizza i documenti finali se devono restare ricercabili.
 
+### Variante Di Avvio Rapido Da Ticket
+
+Quando l'utente chiede un kickoff breve:
+
+1. `mcp-technical-analyst` in modalita `ticket-first-light`: snapshot iniziale, evidenze, inferenze e punti aperti prioritari.
+2. Se il quadro resta semplice, chiudi con raccomandazioni operative minime.
+3. Se emergono dipendenze multi-sorgente, scala al flusso completo `mcp-technical-analyst` (`ticket-first`) e continua la sequenza standard.
+
 ## Fix Regressione Con Effetto Su DB E UI
 
 1. `mcp-docs-navigator`: recupera documentazione e tag rilevanti.
