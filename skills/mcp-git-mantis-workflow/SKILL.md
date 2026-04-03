@@ -21,6 +21,7 @@ Questo skill unifica gestione del codice e tracking dei bug/task integrando `git
 * Se i file toccati sono SQL o CFML, passa subito a `mcp-database-expert` o `mcp-coldfusion-developer` invece di tentare diagnosi profonde solo da Git.
 * Usa `git_conflict_manager` per merge o rebase complessi e `git_query` `action: "blame"` per contestualizzare i conflitti.
 * Prima di scrivere note operative, verifica lo stato del repo con `git_query` `action: "status"`.
+* Per rebase strutturati usa la checklist in `references/rebase-playbook.md` (preflight, conflitti semantici, verifiche finali e criteri di stop verso review umana).
 
 ## Regole di escalation prompt -> skill
 
@@ -47,6 +48,7 @@ Escalation secondaria:
 ## Carica Riferimenti Solo Se Servono
 
 * [references/handoffs-and-conflicts.md](references/handoffs-and-conflicts.md) per modelli di nota, passaggi verso skill tecniche e gestione dei conflitti.
+* [references/rebase-playbook.md](references/rebase-playbook.md) per procedura completa di rebase con guardrail operativi.
 
 ## Risoluzione Problemi
 
