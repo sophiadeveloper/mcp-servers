@@ -656,7 +656,7 @@ Tradurre i workflow piu' frequenti in prompt MCP discoverable.
 | `ingest_pdf_into_docs` | **Implementato ora** (`office-node`) | **prompt-first** | `pdf_path`, `save_path`, `shelf` |
 | `generate_monthly_report` | **Rimandato** | **hybrid** | `month`, `year`, `project_path` |
 | `post_fix_validation` | **Implementato ora** (`git-node`) | **prompt-first** | `project_path` (`source_branch`, `target_branch` opzionali) |
-| `technical_analysis_ticket_first` | **Implementato ora** (`git-node`, thin) | **skill-first** (con escalation esplicita) | `ticket_id`, `project_path`, `scope_hint` opzionale |
+| `technical_analysis_ticket_first` | **Implementato ora** (`git-node`, thin) **solo se il prompt resta in `git-node`** | **skill-first** (con escalation esplicita) | `ticket_id`, `project_path`, `scope_hint` opzionale |
 | `technical_analysis_document_first` | **Rimandato** | **skill-first** | `document_path` o `doc_uri`, `project_path` |
 | `technical_gap_analysis` | **Rimandato** | **skill-first** | `target_scope`, `baseline_scope`, `project_path` |
 
@@ -665,6 +665,7 @@ Note operative rapide:
 - "Implementato ora" indica prompt gia' esposto via `prompts/list` + `prompts/get`.
 - "Rimandato" indica candidato mantenuto in roadmap: il workflow resta coperto da skill o prompt adiacenti finche' non viene introdotto il nome definitivo.
 - la famiglia `technical_analysis_*` resta **skill-first per design**: i prompt MCP associati (quando presenti) devono rimanere thin wrapper di ingresso, senza sostituire il workflow completo della skill.
+- `technical_analysis_ticket_first` va mantenuto come implementato **solo se** il prompt continua a essere esposto in `git-node`; in caso di scelta skill-first/deferred, rimuovere prima il prompt dal codice server e poi aggiornare questa tabella.
 - il kickoff light da ticket e' coperto dalla variante skill `ticket-first-light` (`mcp-technical-analyst`) e **non** da un prompt universale, per evitare compressione impropria del ragionamento analitico.
 
 ### Regole
