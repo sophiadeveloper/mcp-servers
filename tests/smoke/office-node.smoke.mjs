@@ -7,12 +7,12 @@ const registryTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'office-smoke-regi
 const registryPath = path.join(registryTempDir, 'artifact-registry.json');
 const EXPECTED_PROMPTS = {
   ingest_pdf_into_docs: {
-    required: ['pdf_path', 'save_path', 'shelf_name'],
+    required: ['pdf_path', 'save_path', 'shelf'],
     optional: [],
     arguments: {
       pdf_path: '/tmp/source.pdf',
       save_path: '/tmp/exported.md',
-      shelf_name: 'smoke-shelf'
+      shelf: 'smoke-shelf'
     },
     contains: [
       'office-node',

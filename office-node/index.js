@@ -68,7 +68,7 @@ const PROMPT_METADATA = [
         required: true,
       },
       {
-        name: "shelf_name",
+        name: "shelf",
         description: "Nome shelf/collezione destinazione in docs.",
         required: true,
       },
@@ -531,7 +531,7 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
   if (name === "ingest_pdf_into_docs") {
     const pdfPath = escapePromptArg(args.pdf_path || "<PDF_PATH>");
     const savePath = escapePromptArg(args.save_path || "<SAVE_PATH_MD>");
-    const shelfName = escapePromptArg(args.shelf_name || "<SHELF_NAME>");
+    const shelfName = escapePromptArg(args.shelf || args.shelf_name || "<SHELF_NAME>");
     return {
       description: "Pipeline minima PDF -> office export markdown -> docs ingestion.",
       messages: [
