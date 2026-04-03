@@ -42,6 +42,20 @@ Questo skill guida l'agente nell'uso di `office-mcp-server` per leggere, produrr
 * Le modifiche a `.docx` e `.xlsx` sono in-place e non reversibili dal tool: se il file e prezioso, crea prima una copia.
 * Per output condivisi, preferisci un percorso chiaro e stabile invece di lasciare il file in cartelle temporanee.
 
+## Regole di escalation prompt -> skill
+
+Escala a `mcp-office-expert` quando il prompt richiede operazioni esplicite su file Office/PDF:
+
+- lettura o modifica di `.docx`/`.xlsx`;
+- estrazione testo da PDF;
+- produzione report consegnabili in formati Office.
+
+Escalation secondaria:
+
+1. Se il deliverable deve diventare conoscenza ricercabile, passa a `mcp-docs-navigator` per indicizzazione e tagging.
+2. Se il documento e solo punto di partenza di un'indagine tecnica cross-sorgente, passa a `mcp-technical-analyst`.
+3. Se il prompt non richiede artefatti Office ma solo analisi codice/ticket/DB, usa lo skill specialistico pertinente come primario.
+
 ## Carica Riferimenti Solo Se Servono
 
 * [references/report-workflow.md](references/report-workflow.md) per il flusso completo query -> Excel -> Word -> docs/ticket.

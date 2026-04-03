@@ -31,6 +31,16 @@ Questo skill guida l'agente nella scomposizione di obiettivi complessi in una se
 5. Applica la modifica o raccogli la prova, poi valida con il tool piu vicino all'effetto finale.
 6. Lascia sempre un artefatto riusabile: nota Mantis, documento indicizzato, file Office o log di test.
 
+## Regole di escalation prompt -> skill
+
+Usa questo skill come router quando il prompt richiede **piu fasi** o **piu domini** nella stessa consegna.
+
+- Se il prompt chiede analisi da ticket/documenti/allegati/commit, escalare a `mcp-technical-analyst` come skill primario.
+- Se il prompt chiede un'azione diretta e circoscritta (es. query DB, edit doc, fix CFML), escalare subito allo skill specialistico senza passaggi inutili.
+- Se durante l'esecuzione emergono dipendenze non previste (es. dal fix codice serve verifica docs + ticket + report), ri-escalare a questo orchestratore per ridefinire sequenza e handoff.
+
+Regola pratica: **prompt semplice -> skill specialistico**, **prompt composito o con deliverable multipli -> orchestrator + skill primario di dominio**.
+
 ## Carica Riferimenti Solo Se Servono
 
 * [references/workflows.md](references/workflows.md) per flussi completi come regressioni, report mensili, onboarding modulo e analisi tecniche multi-sorgente.

@@ -22,6 +22,19 @@ Questo skill unifica gestione del codice e tracking dei bug/task integrando `git
 * Usa `git_conflict_manager` per merge o rebase complessi e `git_query` `action: "blame"` per contestualizzare i conflitti.
 * Prima di scrivere note operative, verifica lo stato del repo con `git_query` `action: "status"`.
 
+## Regole di escalation prompt -> skill
+
+Escala a `mcp-git-mantis-workflow` quando il prompt contiene relazione tra tracciamento issue e codice, ad esempio:
+
+- "parti dal ticket", "collega commit al bug", "scarica allegato Mantis", "ricostruisci storia fix";
+- richieste di handoff tecnico con evidenze verificabili tra Mantis e Git.
+
+Escalation secondaria:
+
+1. Se dai file emerge dominio SQL/CFML/UI, passa rispettivamente a `mcp-database-expert`, `mcp-coldfusion-developer` o `mcp-browser-automation`.
+2. Se oltre alla correlazione serve sintesi multi-sorgente strutturata, passa a `mcp-technical-analyst`.
+3. Se il prompt parla solo di documentazione o solo di Office senza ticket/commit, non usare questo skill come ingresso primario.
+
 ### Uso corretto di `git_diff` `action: "range_diff"`
 
 * Usa `range_diff` solo se `original_range` e `rewritten_range` rappresentano davvero **la stessa serie logica di commit** (prima/dopo rebase).
