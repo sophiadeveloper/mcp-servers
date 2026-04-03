@@ -1,38 +1,78 @@
 {
   "skill_name": "mcp-technical-analyst",
+  "eval_focus": [
+    "ticket-first",
+    "document-first",
+    "cross-repo-cross-db",
+    "browser-only-if-needed",
+    "facts-vs-inferences-open-points",
+    "structured-markdown-deliverables"
+  ],
   "evals": [
     {
       "id": 1,
-      "prompt": "Parti dal ticket Mantis 0456673, considera anche un repo platform esterno e un repo cliente esterno alla workspace, controlla la documentazione interna e confronta anche il DB QA se quello di dev non basta. Voglio un documento requisiti, uno stato dell'arte e un'analisi tecnica finale in Markdown.",
-      "expected_output": "Analisi multi-sorgente che usa ticket, repo esterni, documentazione e DB, con piu deliverable .md ben separati e con evidenze verificabili.",
+      "prompt": "Parti dal ticket Mantis 0456673 e ricostruisci impatto, causa probabile e piano di fix. Se emergono riferimenti a repo, documenti o dati, apri solo i filoni necessari. Output in Markdown con sezioni: Evidenze, Inferenze, Punti aperti, Prossimi passi.",
+      "expected_output": "Ticket-first con espansione controllata delle fonti e separazione esplicita tra fatti, inferenze e open points in output Markdown.",
       "files": [],
       "expectations": [
-        "Usa fonti Mantis, Git, Docs e SQL senza fermarsi troppo presto a una sola sorgente",
-        "Separa i fatti osservati dalle inferenze",
-        "Produce deliverable Markdown strutturati e riusabili",
-        "Fa domande solo se manca un riferimento non scopribile"
+        "Parte da Mantis come fonte primaria e non salta subito ad analisi dispersiva",
+        "Apre filoni aggiuntivi solo quando richiesti dalle evidenze del ticket",
+        "Consegna Markdown strutturato con Evidenze/Inferenze/Punti aperti"
       ]
     },
     {
       "id": 2,
-      "prompt": "Analizza questo documento DOCX con allegati tecnici e dimmi cosa manca per completare lo sviluppo. Se nel documento compaiono ticket, commit, tabelle o ambienti, apri i filoni necessari e chiudi con una gap analysis e un piano di completamento.",
-      "expected_output": "Analisi document-first che parte dal file, espande i riferimenti tecnici trovati e restituisce un dossier tecnico con gap analysis finale.",
+      "prompt": "Analizza questo documento DOCX di analisi funzionale e identifica cosa manca per andare in sviluppo. Segui i riferimenti tecnici trovati (ticket, commit, tabelle DB, ambienti) e chiudi con gap analysis e checklist operativa in Markdown.",
+      "expected_output": "Document-first con estrazione riferimenti, attivazione dei filoni pertinenti e gap analysis finale in formato .md.",
       "files": [],
       "expectations": [
-        "Parte davvero dal documento e ne estrae i riferimenti tecnici",
-        "Attiva solo i filoni necessari invece di fare esplorazione dispersiva",
-        "Conclude con gap analysis e passi operativi"
+        "Parte realmente dal documento e non da ipotesi predefinite",
+        "Traccia ticket/commit/tabelle emersi e li collega alle evidenze",
+        "Produce gap analysis e checklist operativa riusabile"
       ]
     },
     {
       "id": 3,
-      "prompt": "Confronta repo A, repo B e il DB QA per capire perche una funzione risulta configurata ma non testabile. Se da codice e dati non basta, usa anche il browser per una verifica funzionale, ma solo se necessario. Voglio un report tecnico finale con rischi, assunzioni e raccomandazioni.",
-      "expected_output": "Analisi comparativa cross-repo e cross-db che usa Playwright solo se serve davvero, e produce un report finale con rischi e raccomandazioni.",
+      "prompt": "Confronta repo A, repo B e DB QA per spiegare perche una funzione risulta configurata ma non testabile. Voglio una diagnosi tecnica con matrice fonti e raccomandazioni prioritarie in Markdown.",
+      "expected_output": "Analisi comparativa cross-repo/cross-db con correlazione esplicita tra configurazione, codice e dati.",
       "files": [],
       "expectations": [
-        "Non usa Playwright in automatico se l'analisi e gia chiudibile con altre fonti",
-        "Confronta in modo esplicito repo, dati e configurazione",
-        "Include rischi, assunzioni e raccomandazioni finali"
+        "Confronta in modo esplicito almeno due repo e una sorgente dati",
+        "Usa una matrice o tabella fonti->osservazioni->impatto",
+        "Conclude con raccomandazioni prioritarie e rischi"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Indaga il problema di login partendo da ticket e codice. Usa browser automation solo se le evidenze da ticket/repo/docs/DB non bastano a concludere la diagnosi.",
+      "expected_output": "Uso del browser condizionato, non automatico, con motivazione esplicita della decisione.",
+      "files": [],
+      "expectations": [
+        "Non attiva Playwright in automatico",
+        "Motiva quando il browser e necessario o quando viene evitato",
+        "Mantiene traccia delle evidenze che hanno guidato la scelta"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Produci un report tecnico separando chiaramente fatti verificati, inferenze e assunzioni, e segnala i punti aperti che richiedono conferma umana.",
+      "expected_output": "Report con separazione netta tra osservazioni verificabili e interpretazioni, piu elenco dei punti aperti.",
+      "files": [],
+      "expectations": [
+        "I fatti sono attribuiti a fonti osservabili",
+        "Le inferenze sono marcate come tali e non presentate come certe",
+        "I punti aperti sono action-oriented e verificabili"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Consegna tre deliverable Markdown distinti: requisiti tecnici, stato dell'arte e analisi finale con decisioni consigliate.",
+      "expected_output": "Pacchetto di output .md strutturato e riusabile, con confini chiari tra deliverable.",
+      "files": [],
+      "expectations": [
+        "Produce deliverable separati e non un unico testo monolitico",
+        "Ogni deliverable ha struttura interna coerente (titoli, sezioni, checklist)",
+        "Le decisioni finali richiamano evidenze emerse nei deliverable precedenti"
       ]
     }
   ]
