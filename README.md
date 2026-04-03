@@ -259,6 +259,10 @@ Server locale Node.js per la manipolazione di documenti Office e PDF. **Sostitui
 *   `pdf_document`: Legge i PDF con PDF.js. Usa `metadata` per ottenere numero pagine e metadata, `read_page` o `read_range` per estrarre testo mirato, `read_all` per tutto il documento ed `export_text` per salvare il contenuto in `.md` o `.txt`. In `export_text`, le cartelle mancanti del `save_path` vengono create automaticamente e viene registrato un artifact locale con URI nel formato `artifact://office/<yyyy>/<mm>/<uuid-or-hash>`, mantenendo invariato il `save_path` legacy. Il payload strutturato include `save_path`, `resource_link`, `mime_type`, `pages` e `format`.
     *   Registry artifact locale: `office-node/artifact-registry.json` (override con `OFFICE_ARTIFACT_REGISTRY_PATH`).
     *   Fallback compatibile: se il registry non e' disponibile/scrivibile, l'export continua comunque su disco senza interrompere il tool.
+*   **Resources MCP native**:
+    *   `resources/list`: elenca gli artifact recenti dal registry locale (finestra massima: 50 elementi).
+    *   `resources/read`: legge direttamente il contenuto per artifact testuali (`.md`, `.txt`, `text/*`) oppure ritorna metadata JSON quando l'artifact non e' testuale/non disponibile.
+    *   `resources/templates/list`: espone il template URI `artifact://office/{year}/{month}/{artifact_id}` per client MCP moderni.
 *   **Sinergia con `docs-node`**: per indicizzare un PDF nella documentazione, usa `pdf_document` con `action: "export_text"`, `format: "md"` e un `save_path` locale; poi passa il file esportato a `docs_management` con `action: "scan_file"`. Se mantieni una cartella di export in Markdown, potrai anche usare `scan_folder` per risincronizzarla.
 
 ---
