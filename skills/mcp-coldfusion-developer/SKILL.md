@@ -10,14 +10,14 @@ Questo skill ottimizza sviluppo e debugging su stack ColdFusion/CFML integrando 
 ## Workflow Base
 
 1. Parti da `mcp-docs-navigator` se devi recuperare esempi, naming o procedure prima di scrivere nuovo CFML.
-2. Usa `lint_code` su file `.cfm` e `.cfc` prima di ogni esecuzione o consegna.
+2. **Audit obbligatorio**: usa `lint_code` su file `.cfm` e `.cfc` prima di ogni esecuzione o consegna con comportamento di sola analisi (nessun fix automatico).
 3. Usa `cf_bridge` `action: "evaluate"` solo per espressioni pure o ispezione mirata di variabili, mai per side effect come query, HTTP o file I/O.
 4. Usa `logs_list` e `logs_read` per ricostruire il problema dopo errori runtime.
 5. Dopo una fix, valida con la UI o con il percorso utente piu vicino al comportamento corretto.
 
 ## Sinergie e Best Practices
 
-* Se `lint_code` segnala encoding o problemi correggibili, usa `fix: true` quando e appropriato.
+* **Remediation esplicita**: usa `fix: true` solo quando richiesto in modo esplicito dall'utente o dal task; default sempre audit senza fix.
 * Quando un log punta a una regressione, usa `mcp-git-mantis-workflow` o `git_query` `action: "blame"` per collegare il problema alla storia del file.
 * Usa `mcp-browser-automation` dopo modifiche che cambiano UI, navigazione o submit.
 * Se la fix introduce regole o procedure nuove, aggiorna la documentazione e riallinea l'indice con `mcp-docs-navigator`.
