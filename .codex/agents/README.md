@@ -10,3 +10,7 @@ Profili disponibili con confini espliciti e anti-overlap:
 1. Inizia con `explorer` quando il problema non e' ancora ben delimitato.
 2. Usa `technical_analyst` quando servono timeline, correlazioni e causalita'.
 3. Attiva `implementer` solo con base analitica sufficiente e criterio di accettazione chiaro.
+
+## Compatibilita' con skill consolidate
+- Per intake/analisi tecnica multi-sorgente, allinea il profilo `technical_analyst` con la skill `mcp-technical-analyst`.
+- Per task multi-fase con handoff, applica i profili agenti sotto coordinamento della skill `mcp-master-orchestrator` e dei suoi limiti di parallelismo/profondita'.
