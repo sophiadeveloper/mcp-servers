@@ -2,7 +2,13 @@
 import { createRequire } from "module";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListResourceTemplatesRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import mammoth from "mammoth";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
@@ -113,6 +119,76 @@ function buildWriteArtifactResponse({ tool, action, savePath, mimeType, summary 
       mime_type: mimeType,
     },
   };
+}
+
+function safeReadArtifactRegistry() {
+  try {
+    if (!fs.existsSync(OFFICE_ARTIFACT_REGISTRY_PATH)) {
+      return [];
+    }
+    const raw = fs.readFileSync(OFFICE_ARTIFACT_REGISTRY_PATH, "utf8").trim();
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((entry) => entry && typeof entry === "object" && typeof entry.artifact_uri === "string");
+  } catch {
+    return [];
+  }
+}
+
+function sortArtifactsByDateDesc(entries) {
+  return [...entries].sort((a, b) => {
+    const aTime = Date.parse(a.created_at || "");
+    const bTime = Date.parse(b.created_at || "");
+    const safeATime = Number.isFinite(aTime) ? aTime : 0;
+    const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+    return safeBTime - safeATime;
+  });
+}
+
+function buildArtifactResource(entry) {
+  const savePath = typeof entry.save_path === "string" ? entry.save_path : "";
+  const fileName = savePath ? path.basename(savePath) : "(unknown)";
+  const createdAt = entry.created_at || "unknown";
+  const producerTool = entry.producer_tool || "unknown";
+  return {
+    uri: entry.artifact_uri,
+    name: `Artifact: ${fileName}`,
+    description: `${producerTool} · ${createdAt} · ${savePath || "save_path non disponibile"}`,
+    mimeType: entry.mime_type || "application/json",
+  };
+}
+
+function readArtifactByUri(uri) {
+  const entries = safeReadArtifactRegistry();
+  return entries.find((entry) => entry.artifact_uri === uri) || null;
+}
+
+function buildArtifactMetadata(entry) {
+  const savePath = typeof entry.save_path === "string" ? entry.save_path : "";
+  const fileExists = savePath ? fs.existsSync(savePath) : false;
+  const stats = fileExists ? fs.statSync(savePath) : null;
+  return {
+    artifact_uri: entry.artifact_uri,
+    save_path: savePath || null,
+    mime_type: entry.mime_type || null,
+    producer_tool: entry.producer_tool || null,
+    created_at: entry.created_at || null,
+    file_exists: fileExists,
+    file_size_bytes: stats ? stats.size : null,
+    last_modified_at: stats ? stats.mtime.toISOString() : null,
+  };
+}
+
+function canReadAsText(entry) {
+  const mimeType = String(entry.mime_type || "").toLowerCase();
+  const savePath = String(entry.save_path || "");
+  const extension = path.extname(savePath).toLowerCase();
+  return mimeType.startsWith("text/") || extension === ".md" || extension === ".txt";
 }
 
 // ---------------------------------------------------------------------------
@@ -342,8 +418,75 @@ function formatPdfPagesAsMarkdown(filePath, metadata, pages) {
 // ---------------------------------------------------------------------------
 const server = new Server(
   { name: "office-mcp-server", version: "1.2.1" },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, resources: {} } }
 );
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  const resources = sortArtifactsByDateDesc(safeReadArtifactRegistry())
+    .slice(0, 50)
+    .map(buildArtifactResource);
+  return { resources };
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params || {};
+  try {
+    if (typeof uri !== "string" || !uri.startsWith("artifact://office/")) {
+      throw new Error(`URI risorsa non valida: ${uri}`);
+    }
+
+    const artifact = readArtifactByUri(uri);
+    if (!artifact) {
+      throw new Error(`Artifact non trovato nel registry: ${uri}`);
+    }
+
+    const metadata = buildArtifactMetadata(artifact);
+
+    if (metadata.file_exists && canReadAsText(artifact)) {
+      const text = fs.readFileSync(artifact.save_path, "utf8");
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: artifact.mime_type || "text/plain",
+            text,
+          },
+        ],
+      };
+    }
+
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify(metadata, null, 2),
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      contents: [
+        {
+          uri: typeof uri === "string" ? uri : "artifact://office/invalid",
+          mimeType: "application/json",
+          text: JSON.stringify({ error: error.message }, null, 2),
+        },
+      ],
+    };
+  }
+});
+
+server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+  resourceTemplates: [
+    {
+      uriTemplate: "artifact://office/{year}/{month}/{artifact_id}",
+      name: "Office artifact",
+      description: "Artifact creati dai tool office-node (Word/Excel/PDF export).",
+      mimeType: "application/octet-stream",
+    },
+  ],
+}));
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
