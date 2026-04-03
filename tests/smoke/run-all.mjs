@@ -7,6 +7,7 @@ const smokeFiles = [
   'cf-node.smoke.mjs',
   'docs-node.smoke.mjs',
   'office-node.smoke.mjs',
+  'office-docs-bridge.smoke.mjs',
   'playwright-node.smoke.mjs',
   'linter-node.smoke.mjs'
 ];

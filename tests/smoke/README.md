@@ -28,6 +28,7 @@ node tests/smoke/mantis-node.smoke.mjs
 node tests/smoke/cf-node.smoke.mjs
 node tests/smoke/docs-node.smoke.mjs
 node tests/smoke/office-node.smoke.mjs
+node tests/smoke/office-docs-bridge.smoke.mjs
 node tests/smoke/playwright-node.smoke.mjs
 node tests/smoke/linter-node.smoke.mjs
 ```
@@ -42,3 +43,12 @@ node tests/smoke/run-all.mjs
 
 Ogni smoke stampa una riga `[PASS] <server>` con numero di tool rilevati.
 In caso di errore stampa `[FAIL] <server>` e, se presente, lo `stderr` del server.
+
+## Smoke bridge `office-node` -> `docs-node`
+
+`office-docs-bridge.smoke.mjs` valida il contratto minimo M3 senza anticipare milestone successive:
+
+1. `office-node` esporta testo PDF in `.md` su `save_path`;
+2. verifica che `artifact://office/...` sia registrato con mapping verso lo stesso `save_path`;
+3. `docs-node` ingestisce il file esportato usando `docs_management.scan_file` sul percorso locale;
+4. la ricerca documentale (`docs_navigation.search`) restituisce contenuto proveniente dall'export Office.
