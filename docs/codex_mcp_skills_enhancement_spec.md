@@ -653,7 +653,7 @@ Tradurre i workflow piu' frequenti in prompt MCP discoverable.
 | --- | --- | --- | --- |
 | `triage_bug_ticket` | **Implementato ora** (`git-node`) | **prompt-first** | `ticket_id`, `project_path` (`focus_area` opzionale) |
 | `analyze_merge_conflict` | **Rimandato** (coperto temporaneamente da `git_conflict_resolution_plan`) | **hybrid** | `project_path`, `target_branch`, `source_branch` |
-| `ingest_pdf_into_docs` | **Implementato ora** (`office-node`) | **prompt-first** | `pdf_path`, `save_path`, `shelf_name`, `doc_title` |
+| `ingest_pdf_into_docs` | **Implementato ora** (`office-node`) | **prompt-first** | `pdf_path`, `save_path`, `shelf` |
 | `generate_monthly_report` | **Rimandato** | **hybrid** | `month`, `year`, `project_path` |
 | `post_fix_validation` | **Implementato ora** (`git-node`) | **prompt-first** | `project_path` (`source_branch`, `target_branch` opzionali) |
 | `technical_analysis_ticket_first` | **Implementato ora** (`git-node`, thin) | **skill-first** (con escalation esplicita) | `ticket_id`, `project_path`, `scope_hint` opzionale |
