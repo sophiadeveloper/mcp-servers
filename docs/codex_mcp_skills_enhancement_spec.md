@@ -474,14 +474,20 @@ Deve contenere solo:
 
 Creare agenti stretti e opinionated, non generici.
 
-Profili attualmente presenti in `.codex/agents/`:
+Baseline reale M6 (file attualmente presenti in `.codex/agents/*.md`):
 
-- `explorer.md` — lettura e mappatura capability attuali
-- `implementer.md` — implementazione incrementale e test
-- `technical_analyst.md` — intake e ricostruzione multi-sorgente, allineato a `mcp-technical-analyst`
+- `explorer.md` — discovery/audit read-first, senza modifiche
+- `implementer.md` — patch/test/doc incrementali con verifica
+- `technical_analyst.md` — ricostruzione multi-sorgente disciplinata e decision brief
 
-Profili opzionali (non ancora implementati nel repository):
+File di supporto presente:
 
+- `README.md` — regole di ingaggio e compatibilita' tra profili
+
+Profili extra da considerare **opzionali futuri** (non parte del baseline M6):
+
+- `orchestrator` — coordinamento multi-fase e routing tra agenti/skill
+- `reviewer` — audit finale su qualita', compatibilita' e completezza
 - `docs_researcher` — verifica spec/API/documentazione
 - `skill_evaluator` — test di trigger e qualita' skill
 
