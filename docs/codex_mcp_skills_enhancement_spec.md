@@ -737,6 +737,10 @@ Per il filone Git/Rebase:
 - post-rebase verification
 - casi in cui fermarsi per review umana
 
+Check trasversale consigliato per le skill principali con eval:
+
+- validazione sintattica dei file `evals/evals.json` (JSON parse) prima della chiusura PR
+
 ### Criteri di accettazione
 
 - le skill top hanno trigger piu' precisi
